@@ -1,10 +1,5 @@
 /**
  * scraper.js — Rate-limited IMDbPro page fetcher using Cheerio
- *
- * Strategy:
- *   1. HTTP GET with authenticated session headers (Cookie, User-Agent, x-amzn-session-id)
- *   2. Parse HTML with Cheerio, extract <script id="__NEXT_DATA__">
- *   3. Return parsed JSON → props.pageProps
  */
 
 const axios = require('axios');
@@ -15,6 +10,39 @@ require('dotenv').config();
 const COOKIE      = process.env.IMDBPRO_COOKIE || '';
 const USER_AGENT  = process.env.IMDBPRO_USER_AGENT || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 const SESSION_ID  = process.env.IMDBPRO_SESSION_ID || '';
+
+/**
+ * Scrapes an IMDbPro search list or discover page for NM IDs.
+ *
+ * @param {string} url  The Discover People or search results URL
+ * @returns {string[]}  Array of NM IDs (nmXXXXXXX)
+ */
+async function fetchDiscoverIds(url) {
+    const headers = {
+        'Cookie':             COOKIE,
+        'User-Agent':         USER_AGENT,
+        'Accept':             'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    };
+    if (SESSION_ID) headers['x-amzn-session-id'] = SESSION_ID;
+
+    const response = await axios.get(url, { headers });
+    const $ = cheerio.load(response.data);
+    
+    // Most IMDb search pages contain IDs in links with data-const-id or within <a> hrefs
+    const ids = new Set();
+    
+    // Look for data-const-id or links containing /nm/
+    $('a').each((i, el) => {
+        const href = $(el).attr('href') || '';
+        const match = href.match(/\/name\/(nm\d+)/);
+        if (match) ids.add(match[1]);
+        
+        const constId = $(el).attr('data-const-id');
+        if (constId && constId.startsWith('nm')) ids.add(constId);
+    });
+
+    return Array.from(ids);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function sleep(ms) {
@@ -94,4 +122,4 @@ async function fetchPageProps(url) {
     return pageProps;
 }
 
-module.exports = { fetchPage, fetchPageProps, sleep, getRandomDelay };
+module.exports = { fetchPage, fetchPageProps, fetchDiscoverIds, sleep, getRandomDelay };

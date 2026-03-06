@@ -2,9 +2,9 @@
   "name": "imdbpro-scraper",
   "version": "1.0.0",
   "description": "IMDbPro Web Scraper and Database Upsert Pipeline",
-  "main": "main.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node main.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

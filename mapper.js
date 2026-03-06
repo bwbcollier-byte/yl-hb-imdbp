@@ -1,20 +1,14 @@
 /**
  * mapper.js — Extract structured data from IMDbPro __NEXT_DATA__ JSON
- *
- * Each function takes the raw `pageProps` object and returns a flat row
- * ready for Supabase upsert.  Heavy use of optional chaining (?.) to
- * avoid crashes on missing nodes.
  */
 
 // ─── Helpers ────────────────────────────────────────────────────────
-/** Safely join an array of strings, filtering blanks */
 function safeJoin(arr, sep = ', ') {
     if (!Array.isArray(arr)) return null;
     const cleaned = arr.filter(Boolean);
     return cleaned.length > 0 ? cleaned.join(sep) : null;
 }
 
-/** Split "First Middle Last" into { first_name, last_name } */
 function splitName(fullName) {
     if (!fullName) return { first_name: null, last_name: null };
     const parts = fullName.trim().split(/\s+/);
@@ -22,6 +16,19 @@ function splitName(fullName) {
     const last_name = parts.pop();
     const first_name = parts.join(' ');
     return { first_name, last_name };
+}
+
+/** Extract username from a clean URL (Instagram, Twitter, etc) */
+function extractUsernameFromUrl(url) {
+    if (!url) return null;
+    try {
+        const u = new URL(url);
+        // Usually handles https://instagram.com/username or https://twitter.com/username
+        const parts = u.pathname.split('/').filter(Boolean);
+        return parts[0] || null;
+    } catch (e) {
+        return null;
+    }
 }
 
 // ─── Talent Profile Mapper ──────────────────────────────────────────
@@ -50,9 +57,11 @@ function mapTalentProfile(pageProps) {
     const imdb_image = atf?.primaryImage?.url || null;
 
     // ── Professions ──
-    const professions = safeJoin(
-        (atf?.professions || []).map(p => p?.profession?.text)
-    );
+    const professionList = (atf?.professions || []).map(p => p?.profession?.text).filter(Boolean);
+    const professions = safeJoin(professionList);
+    
+    // REQUIREMENT: Set act_type to the first profession
+    const act_type = professionList[0] || null;
 
     // ── Birth Info ──
     const birthday     = atf?.birthDate?.dateComponents
@@ -104,9 +113,6 @@ function mapTalentProfile(pageProps) {
         }
     }
 
-    // ── Act Type (Person vs. Group) ──
-    const act_type = atf?.entityType || null;
-
     return {
         imdb_id,
         name,
@@ -125,6 +131,46 @@ function mapTalentProfile(pageProps) {
         imdb_image,
         updated_at:  new Date().toISOString()
     };
+}
+
+/**
+ * Extracts external social links (Instagram, Twitter, etc.)
+ */
+function mapSocialProfiles(pageProps, talentUuid, imdbId) {
+    const atf = pageProps?.aboveTheFold;
+    const main = pageProps?.mainColumnData;
+    
+    // Usually found in aboveTheFold.externalLinks or mainColumnData.externalLinks
+    const links = atf?.externalLinks?.edges || main?.externalLinks?.edges || [];
+    
+    const socials = [];
+
+    for (const edge of links) {
+        const url   = edge?.node?.url;
+        const label = (edge?.node?.label || '').toLowerCase();
+        if (!url) continue;
+
+        let type = null;
+        if (url.includes('instagram.com') || label.includes('instagram')) type = 'Instagram';
+        else if (url.includes('twitter.com') || url.includes('x.com') || label.includes('twitter')) type = 'Twitter';
+        else if (url.includes('facebook.com') || label.includes('facebook')) type = 'Facebook';
+        else if (url.includes('youtube.com') || label.includes('youtube')) type = 'YouTube';
+        else if (url.includes('tiktok.com') || label.includes('tiktok')) type = 'TikTok';
+
+        if (type) {
+            socials.push({
+                talent_id: talentUuid,
+                name: atf?.nameText?.text || null,
+                username: extractUsernameFromUrl(url),
+                social_type: type,
+                social_url: url,
+                tmdb_imdb_id: imdbId,
+                updated_at: new Date().toISOString()
+            });
+        }
+    }
+
+    return socials;
 }
 
 // ─── Company Profile Mapper ─────────────────────────────────────────
@@ -309,6 +355,7 @@ module.exports = {
     mapTalentProfile,
     mapCompanyProfile,
     mapContactProfile,
+    mapSocialProfiles,
     extractContactsFromCompany,
     splitName,
     safeJoin
