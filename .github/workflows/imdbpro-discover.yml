@@ -1,0 +1,38 @@
+name: IMDbPro Discover Scraper
+
+on:
+  # Allows manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      discover_url:
+        description: "IMDbPro Discover Page URL"
+        required: true
+        default: "https://pro.imdb.com/discover/people/?profession=any&sortOrder=STARMETER_ASC&ref_=nmnw_nv_ppl_stm"
+
+jobs:
+  discover_and_scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 hours max (for list processing with delays)
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Discover Scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
+          IMDBPRO_USER_AGENT: ${{ secrets.IMDBPRO_USER_AGENT }}
+          IMDBPRO_SESSION_ID: ${{ secrets.IMDBPRO_SESSION_ID }}
+          # Overwrite the hardcoded discovery URL if provided
+          DISCOVER_URL: ${{ github.event.inputs.discover_url }}
+        run: node index.js

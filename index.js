@@ -18,7 +18,7 @@ const {
 require('dotenv').config();
 
 // CONFIG: The Discover page to start from
-const DISCOVER_URL = 'https://pro.imdb.com/discover/people/?profession=any&sortOrder=STARMETER_ASC&ref_=nmnw_nv_ppl_stm';
+const DISCOVER_URL = process.env.DISCOVER_URL || 'https://pro.imdb.com/discover/people/?profession=any&sortOrder=STARMETER_ASC&ref_=nmnw_nv_ppl_stm';
 
 async function processNmId(nmId) {
     const url = `https://pro.imdb.com/name/${nmId}/`;
