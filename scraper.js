@@ -31,9 +31,10 @@ async function fetchDiscoverIds(url) {
         'Accept-Language':    'en-US,en;q=0.9',
         'Cache-Control':      'no-cache',
         'Pragma':             'no-cache',
+        'Referer':            'https://pro.imdb.com/',
         'Sec-Fetch-Dest':     'document',
         'Sec-Fetch-Mode':     'navigate',
-        'Sec-Fetch-Site':     'none',
+        'Sec-Fetch-Site':     'same-origin',
         'Sec-Fetch-User':     '?1',
         'Upgrade-Insecure-Requests': '1'
     };
@@ -63,33 +64,41 @@ async function fetchDiscoverIds(url) {
     // 1. Classic scan of links & data attributes
     $('a').each((i, el) => {
         const href = $(el).attr('href') || '';
-        const match = href.match(/\/name\/(nm\d{7,})/);
-        if (match) ids.add(match[1]);
+        const match = href.match(/\/[nN][mM]\d{2,}/); 
+        if (match) {
+            const idMatch = match[0].match(/[nN][mM]\d+/);
+            if (idMatch) ids.add(idMatch[0].toLowerCase());
+        }
 
         const constId = $(el).attr('data-const-id');
-        if (constId && constId.startsWith('nm')) ids.add(constId);
+        if (constId && constId.toLowerCase().startsWith('nm')) ids.add(constId.toLowerCase());
     });
 
     // 2. Scan JSON blobs (__NEXT_DATA__)
     const scriptContent = $('script#__NEXT_DATA__[type="application/json"]').html();
     if (scriptContent) {
-        // Regex catch-all for IDs in JSON state
-        const matches = scriptContent.match(/nm\d{7,}/g);
+        const matches = scriptContent.match(/[nN][mM]\d{6,}/g);
         if (matches) {
-            matches.forEach(m => ids.add(m));
+            matches.forEach(m => ids.add(m.toLowerCase()));
         }
     }
 
     // 3. Fallback: Scan whole HTML as a safety measure
-    // People IDs on IMDb are nm followed by 7+ digits
-    const pageMatches = response.data.match(/nm\d{7,}/g);
+    const pageMatches = response.data.match(/[nN][mM]\d{6,}/g);
     if (pageMatches) {
-        pageMatches.forEach(m => ids.add(m));
+        pageMatches.forEach(m => ids.add(m.toLowerCase()));
     }
 
     const results = Array.from(ids);
+
+    if (results.length === 0) {
+        console.warn('   ⚠️  No IDs found in response body.');
+        console.log('   📄 Body Preview (first 1000 chars):');
+        console.log('   -------------------------------------------------');
+        console.log(response.data.slice(0, 1000).replace(/\s+/g, ' '));
+        console.log('   -------------------------------------------------');
+    }
     
-    // Sort nm IDs to keep them somewhat in page order if possible, though Set disrupts it
     return results;
 }
 
