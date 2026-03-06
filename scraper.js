@@ -20,30 +20,74 @@ const SESSION_ID  = sanitize(process.env.IMDBPRO_SESSION_ID);
  * @returns {string[]}  Array of NM IDs (nmXXXXXXX)
  */
 async function fetchDiscoverIds(url) {
+    if (!COOKIE) {
+        throw new Error('IMDBPRO_COOKIE is not set.');
+    }
+
     const headers = {
         'Cookie':             COOKIE,
         'User-Agent':         USER_AGENT,
         'Accept':             'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language':    'en-US,en;q=0.9',
+        'Cache-Control':      'no-cache',
+        'Pragma':             'no-cache',
+        'Sec-Fetch-Dest':     'document',
+        'Sec-Fetch-Mode':     'navigate',
+        'Sec-Fetch-Site':     'none',
+        'Sec-Fetch-User':     '?1',
+        'Upgrade-Insecure-Requests': '1'
     };
     if (SESSION_ID) headers['x-amzn-session-id'] = SESSION_ID;
 
-    const response = await axios.get(url, { headers });
-    const $ = cheerio.load(response.data);
-    
-    // Most IMDb search pages contain IDs in links with data-const-id or within <a> hrefs
+    const response = await axios.get(url, { 
+        headers, 
+        timeout: 30000, 
+        validateStatus: (s) => s < 400 
+    });
+
+    if (typeof response.data !== 'string') {
+        throw new Error(`Invalid response data type: ${typeof response.data}`);
+    }
+
+    // Check for login redirect
+    if (response.data.includes('Sign in') && response.data.includes('ap_email')) {
+        throw new Error('Session invalid — page redirected to IMDb login.');
+    }
+
     const ids = new Set();
-    
-    // Look for data-const-id or links containing /nm/
+    const $ = cheerio.load(response.data);
+
+    // 1. Classic scan of links & data attributes
     $('a').each((i, el) => {
         const href = $(el).attr('href') || '';
-        const match = href.match(/\/name\/(nm\d+)/);
+        const match = href.match(/\/name\/(nm\d{7,})/);
         if (match) ids.add(match[1]);
-        
+
         const constId = $(el).attr('data-const-id');
         if (constId && constId.startsWith('nm')) ids.add(constId);
     });
 
-    return Array.from(ids);
+    // 2. Scan JSON blobs (__NEXT_DATA__)
+    const scriptContent = $('script#__NEXT_DATA__[type="application/json"]').html();
+    if (scriptContent) {
+        // Regex catch-all for IDs in JSON state
+        const matches = scriptContent.match(/nm\d{7,}/g);
+        if (matches) {
+            matches.forEach(m => ids.add(m));
+        }
+    }
+
+    // 3. Fallback: Scan whole HTML as a safety measure
+    // People IDs on IMDb are nm followed by 7+ digits
+    const pageMatches = response.data.match(/nm\d{7,}/g);
+    if (pageMatches) {
+        pageMatches.forEach(m => ids.add(m));
+    }
+
+    const results = Array.from(ids);
+    
+    // Sort nm IDs to keep them somewhat in page order if possible, though Set disrupts it
+    return results;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
