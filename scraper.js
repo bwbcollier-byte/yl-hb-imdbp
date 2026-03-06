@@ -7,9 +7,11 @@ const cheerio = require('cheerio');
 require('dotenv').config();
 
 // ─── Session Headers ────────────────────────────────────────────────
-const COOKIE      = process.env.IMDBPRO_COOKIE || '';
-const USER_AGENT  = process.env.IMDBPRO_USER_AGENT || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-const SESSION_ID  = process.env.IMDBPRO_SESSION_ID || '';
+const sanitize = (val) => (val || '').trim().replace(/\r?\n|\r/g, '');
+
+const COOKIE      = sanitize(process.env.IMDBPRO_COOKIE);
+const USER_AGENT  = sanitize(process.env.IMDBPRO_USER_AGENT) || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+const SESSION_ID  = sanitize(process.env.IMDBPRO_SESSION_ID);
 
 /**
  * Scrapes an IMDbPro search list or discover page for NM IDs.
