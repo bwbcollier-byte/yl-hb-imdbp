@@ -1,0 +1,36 @@
+name: IMDbPro Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls_json:
+        description: 'JSON array of URLs to scrape, e.g. [{"url": "...", "type": "talent"}]'
+        required: true
+        default: "[]"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
+          IMDBPRO_USER_AGENT: ${{ secrets.IMDBPRO_USER_AGENT }}
+          IMDBPRO_SESSION_ID: ${{ secrets.IMDBPRO_SESSION_ID }}
+          URLS_JSON: ${{ github.event.inputs.urls_json }}
+        run: node main.js
