@@ -33,7 +33,7 @@ async function fetchDiscoverIds(url) {
         'Cookie':             COOKIE,
         'User-Agent':         USER_AGENT,
         'Accept':             'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding':    'gzip, deflate, br, zstd',
+        'Accept-Encoding':    'gzip, deflate',
         'Accept-Language':    'en-GB,en-US;q=0.9,en;q=0.8',
         'Cache-Control':      'max-age=0',
         'Referer':            'https://pro.imdb.com/',
@@ -48,13 +48,17 @@ async function fetchDiscoverIds(url) {
     };
     if (SESSION_ID) headers['x-amzn-session-id'] = SESSION_ID;
 
+    // DEBUG: Log a masked cookie to verify it's being sent correctly
+    const cookiePreview = COOKIE ? `${COOKIE.substring(0, 15)}...${COOKIE.substring(COOKIE.length - 10)}` : 'EMPTY';
+    console.log(`   🍪 Cookie Header: [${cookiePreview}] (Total: ${COOKIE.length} chars)`);
+
     const response = await axios.get(url, { 
         headers, 
         timeout: 30000, 
         validateStatus: (s) => true 
     });
 
-    console.log(`   📡 Status: ${response.status}`);
+    console.log(`   📡 Status: ${response.status} | Data Length: ${response.data.length || 0} bytes`);
 
     if (typeof response.data !== 'string') {
         throw new Error(`Invalid response data type: ${typeof response.data}`);
