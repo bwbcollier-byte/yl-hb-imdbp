@@ -49,13 +49,16 @@ async function fetchDiscoverIds(url) {
         throw new Error(`Invalid response data type: ${typeof response.data}`);
     }
 
+    const $ = cheerio.load(response.data);
+    const pageTitle = $('title').text().trim();
+    console.log(`   📄 Page Title: "${pageTitle}"`);
+
     // Check for login redirect
-    if (response.data.includes('Sign in') && response.data.includes('ap_email')) {
+    if (response.data.includes('Sign in') && response.data.includes('ap_email') || pageTitle.includes('Sign In')) {
         throw new Error('Session invalid — page redirected to IMDb login.');
     }
 
     const ids = new Set();
-    const $ = cheerio.load(response.data);
 
     // 1. Classic scan of links & data attributes
     $('a').each((i, el) => {
