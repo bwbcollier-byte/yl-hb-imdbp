@@ -1,18 +1,15 @@
-name: IMDbPro Discover Scraper
+name: IMDbPro CRM Enrichment
 
 on:
-  # Allows manual triggering from the Actions tab
   workflow_dispatch:
-    inputs:
-      discover_url:
-        description: "IMDbPro Discover Page URL"
-        required: true
-        default: "https://pro.imdb.com/discover/people/?profession=any&sortOrder=STARMETER_ASC&ref_=nmnw_nv_ppl_stm"
+  schedule:
+    # Run once daily at midnight UTC
+    - cron: "0 0 * * *"
 
 jobs:
-  discover_and_scrape:
+  enrich:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 hours max (for list processing with delays)
+    timeout-minutes: 360 # Long timeout to accommodate rate-limited scraping
 
     steps:
       - name: Checkout Repository
@@ -26,16 +23,14 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Install Chrome for Puppeteer
+      - name: Install Chrome
         run: npx puppeteer browsers install chrome
 
-      - name: Run Discover Scraper
+      - name: Run CRM Enrichment Pipeline
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
           IMDBPRO_USER_AGENT: ${{ secrets.IMDBPRO_USER_AGENT }}
           IMDBPRO_SESSION_ID: ${{ secrets.IMDBPRO_SESSION_ID }}
-          # Overwrite the hardcoded discovery URL if provided
-          DISCOVER_URL: ${{ github.event.inputs.discover_url }}
-        run: node index.js
+        run: node enrich-crm.js
