@@ -4,6 +4,7 @@
 
 const axios = require('axios');
 const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 require('dotenv').config();
 
 // ─── Session Headers ────────────────────────────────────────────────
@@ -19,101 +20,60 @@ const USER_AGENT  = sanitize(process.env.IMDBPRO_USER_AGENT) || 'Mozilla/5.0 (Ma
 const SESSION_ID  = sanitize(process.env.IMDBPRO_SESSION_ID);
 
 /**
- * Scrapes an IMDbPro search list or discover page for NM IDs.
+ * Scrapes an IMDbPro search list or discover page for NM IDs using a headless browser.
+ * IMDbPro Discover is a React app that loads results dynamically, so we need Puppeteer.
  *
  * @param {string} url  The Discover People or search results URL
  * @returns {string[]}  Array of NM IDs (nmXXXXXXX)
  */
 async function fetchDiscoverIds(url) {
-    if (!COOKIE) {
-        throw new Error('IMDBPRO_COOKIE is not set.');
-    }
+    if (!COOKIE) throw new Error('IMDBPRO_COOKIE is not set.');
 
-    const headers = {
-        'Cookie':             COOKIE,
-        'User-Agent':         USER_AGENT,
-        'Accept':             'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding':    'gzip, deflate',
-        'Accept-Language':    'en-GB,en-US;q=0.9,en;q=0.8',
-        'Cache-Control':      'max-age=0',
-        'Referer':            'https://pro.imdb.com/',
-        'Sec-Ch-Ua':          '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-        'Sec-Ch-Ua-Mobile':   '?0',
-        'Sec-Ch-Ua-Platform': '"macOS"',
-        'Sec-Fetch-Dest':     'document',
-        'Sec-Fetch-Mode':     'navigate',
-        'Sec-Fetch-Site':     'same-origin',
-        'Sec-Fetch-User':     '?1',
-        'Upgrade-Insecure-Requests': '1'
-    };
-    if (SESSION_ID) headers['x-amzn-session-id'] = SESSION_ID;
-
-    // DEBUG: Log a masked cookie to verify it's being sent correctly
-    const cookiePreview = COOKIE ? `${COOKIE.substring(0, 15)}...${COOKIE.substring(COOKIE.length - 10)}` : 'EMPTY';
-    console.log(`   🍪 Cookie Header: [${cookiePreview}] (Total: ${COOKIE.length} chars)`);
-
-    const response = await axios.get(url, { 
-        headers, 
-        timeout: 30000, 
-        validateStatus: (s) => true 
+    console.log('   🌐 Launching browser for discovery...');
+    const browser = await puppeteer.launch({ 
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
-    console.log(`   📡 Status: ${response.status} | Data Length: ${response.data.length || 0} bytes`);
+    try {
+        const page = await browser.newPage();
+        await page.setUserAgent(USER_AGENT);
 
-    if (typeof response.data !== 'string') {
-        throw new Error(`Invalid response data type: ${typeof response.data}`);
+        // Parse and set cookies
+        const cookies = COOKIE.split(';').map(c => {
+            const [name, ...rest] = c.trim().split('=');
+            return { name: name.trim(), value: rest.join('=').trim(), domain: '.imdb.com', path: '/' };
+        }).filter(c => c.name && c.value);
+        
+        await page.setCookie(...cookies);
+
+        console.log(`   📍 Navigating to: ${url}`);
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+
+        console.log('   ⏳ Waiting for talent results...');
+        await page.waitForFunction(() => {
+            return document.querySelectorAll('a[href*="/name/nm"]').length > 0;
+        }, { timeout: 20000 }).catch(() => console.log('   ⚠️  Discovery timeout. Scanned partial DOM.'));
+
+        // Brief delay for stable render
+        await new Promise(r => setTimeout(r, 2000));
+
+        const ids = await page.evaluate(() => {
+            const set = new Set();
+            document.querySelectorAll('a[href*="/name/nm"]').forEach(a => {
+                const m = a.href.match(/\/name\/(nm\d+)/);
+                if (m) set.add(m[1]);
+            });
+            document.querySelectorAll('[data-const-id^="nm"]').forEach(el => {
+                set.add(el.getAttribute('data-const-id'));
+            });
+            return Array.from(set);
+        });
+
+        return ids;
+    } finally {
+        await browser.close();
     }
-
-    const $ = cheerio.load(response.data);
-    const pageTitle = $('title').text().trim();
-    console.log(`   📄 Page Title: "${pageTitle}"`);
-
-    // Check for login redirect
-    if (response.data.includes('Sign in') && response.data.includes('ap_email') || pageTitle.includes('Sign In')) {
-        throw new Error('Session invalid — page redirected to IMDb login.');
-    }
-
-    const ids = new Set();
-
-    // 1. Classic scan of links & data attributes
-    $('a').each((i, el) => {
-        const href = $(el).attr('href') || '';
-        const match = href.match(/\/[nN][mM]\d{2,}/); 
-        if (match) {
-            const idMatch = match[0].match(/[nN][mM]\d+/);
-            if (idMatch) ids.add(idMatch[0].toLowerCase());
-        }
-
-        const constId = $(el).attr('data-const-id');
-        if (constId && constId.toLowerCase().startsWith('nm')) ids.add(constId.toLowerCase());
-    });
-
-    // 2. Scan JSON blobs (__NEXT_DATA__)
-    const scriptContent = $('script#__NEXT_DATA__[type="application/json"]').html();
-    if (scriptContent) {
-        const matches = scriptContent.match(/[nN][mM]\d{6,}/g);
-        if (matches) {
-            matches.forEach(m => ids.add(m.toLowerCase()));
-        }
-    }
-
-    // 3. Fallback: Scan whole HTML as a safety measure
-    const pageMatches = response.data.match(/[nN][mM]\d{6,}/g);
-    if (pageMatches) {
-        pageMatches.forEach(m => ids.add(m.toLowerCase()));
-    }
-
-    const results = Array.from(ids);
-
-    if (results.length === 0) {
-        console.warn('   ⚠️  No IDs found in response body.');
-        console.log('   📄 Body Preview (first 1000 chars):');
-        console.log('   -------------------------------------------------');
-        console.log(response.data.slice(0, 1000).replace(/\s+/g, ' '));
-        console.log('   -------------------------------------------------');
-    }
-    
-    return results;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

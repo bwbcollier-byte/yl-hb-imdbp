@@ -26,17 +26,47 @@ function clean(obj) {
  */
 async function upsertTalent(data) {
     const payload = clean(data);
-    const { data: result, error } = await supabase
+    
+    // 1. Check for existing record by imdb_id
+    const { data: existing, error: findError } = await supabase
         .from('talent_profiles')
-        .upsert(payload, { onConflict: 'imdb_id' })
         .select('id')
-        .single();
+        .eq('imdb_id', payload.imdb_id)
+        .maybeSingle();
 
-    if (error) {
-        console.error('   ❌ Error upserting talent:', error.message);
+    if (findError) {
+        console.error('   ❌ Error searching for talent:', findError.message);
         return null;
     }
-    return result.id;
+
+    if (existing) {
+        // 2. Update existing record
+        const { data: updated, error: updateError } = await supabase
+            .from('talent_profiles')
+            .update(payload)
+            .eq('id', existing.id)
+            .select('id')
+            .single();
+
+        if (updateError) {
+            console.error('   ❌ Error updating talent:', updateError.message);
+            return null;
+        }
+        return updated.id;
+    } else {
+        // 3. Insert new record
+        const { data: inserted, error: insertError } = await supabase
+            .from('talent_profiles')
+            .insert(payload)
+            .select('id')
+            .single();
+
+        if (insertError) {
+            console.error('   ❌ Error inserting talent:', insertError.message);
+            return null;
+        }
+        return inserted.id;
+    }
 }
 
 /**
@@ -83,11 +113,31 @@ async function upsertSocials(socials) {
  */
 async function upsertCompany(data) {
     const payload = clean(data);
-    const { error } = await supabase
+    
+    // Check for existing
+    const { data: existing, error: findError } = await supabase
         .from('crm_companies')
-        .upsert(payload, { onConflict: 'id_imdb' });
+        .select('id')
+        .eq('id_imdb', payload.id_imdb)
+        .maybeSingle();
 
-    if (error) console.error('   ❌ Error upserting company:', error.message);
+    if (findError) {
+        console.error('   ❌ Error searching for company:', findError.message);
+        return;
+    }
+
+    if (existing) {
+        const { error: updateError } = await supabase
+            .from('crm_companies')
+            .update(payload)
+            .eq('id', existing.id);
+        if (updateError) console.error('   ❌ Error updating company:', updateError.message);
+    } else {
+        const { error: insertError } = await supabase
+            .from('crm_companies')
+            .insert(payload);
+        if (insertError) console.error('   ❌ Error inserting company:', insertError.message);
+    }
 }
 
 /**
@@ -95,11 +145,31 @@ async function upsertCompany(data) {
  */
 async function upsertContact(data) {
     const payload = clean(data);
-    const { error } = await supabase
+    
+    // Check for existing
+    const { data: existing, error: findError } = await supabase
         .from('crm_contacts')
-        .upsert(payload, { onConflict: 'id_imdb' });
+        .select('id')
+        .eq('id_imdb', payload.id_imdb)
+        .maybeSingle();
 
-    if (error) console.error('   ❌ Error upserting contact:', error.message);
+    if (findError) {
+        console.error('   ❌ Error searching for contact:', findError.message);
+        return;
+    }
+
+    if (existing) {
+        const { error: updateError } = await supabase
+            .from('crm_contacts')
+            .update(payload)
+            .eq('id', existing.id);
+        if (updateError) console.error('   ❌ Error updating contact:', updateError.message);
+    } else {
+        const { error: insertError } = await supabase
+            .from('crm_contacts')
+            .insert(payload);
+        if (insertError) console.error('   ❌ Error inserting contact:', insertError.message);
+    }
 }
 
 module.exports = {
