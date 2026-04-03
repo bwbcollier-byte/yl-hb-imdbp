@@ -18,7 +18,7 @@ const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 const LIMIT = 20;
 
 async function processTalentContacts(talent) {
-    const nmId = talent.soc_imdb;
+    const nmId = talent.id_imdb;
     const url = `https://pro.imdb.com/name/${nmId}/`;
     
     console.log(`\n🔍 Scraping Representation: ${talent.name} (${nmId}) -> ${url}`);
@@ -118,8 +118,8 @@ async function main() {
         // Step 1: Find talent with IMDb ID but NO CRM contacts updated yet
         const { data: talents, error: fetchErr } = await supabase
             .from('hb_talent')
-            .select('id, name, soc_imdb')
-            .not('soc_imdb', 'is', null)
+            .select('id, name, id_imdb')
+            .not('id_imdb', 'is', null)
             .is('contacts_updated', null)
             .limit(LIMIT);
 
