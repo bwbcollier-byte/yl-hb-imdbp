@@ -1,0 +1,180 @@
+{
+  "DIRECT CONTACT": [
+    {
+      "type": "Other",
+      "value": "Sydney Sweeney"
+    },
+    {
+      "type": "Website",
+      "value": "instagram.com"
+    }
+  ],
+  "COMPANY": [
+    {
+      "type": "Other",
+      "value": "Fifty-Fifty Films"
+    },
+    {
+      "type": "Other",
+      "value": "Principal (Producer)"
+    },
+    {
+      "type": "Email",
+      "value": "submissions@fifty-fiftyfilms.com"
+    }
+  ],
+  "MANAGER": [
+    {
+      "type": "Other",
+      "value": "Brillstein Entertainment Partners"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 310 275 6135"
+    },
+    {
+      "type": "Address",
+      "value": "9150 Wilshire Blvd., Ste. 350, Beverly Hills, 90212, CA, USA"
+    },
+    {
+      "type": "Agent",
+      "value": "Jennifer Millar"
+    }
+  ],
+  "TALENT AGENT-COMMERCIAL": [
+    {
+      "type": "Other",
+      "value": "Paradigm Talent Agency"
+    },
+    {
+      "type": "Website",
+      "value": "paradigmagency.com"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 310 288 8000"
+    },
+    {
+      "type": "Address",
+      "value": "700 N San Vicente Blvd, Suite G820, West Hollywood, 90069, CA, US"
+    },
+    {
+      "type": "Agent",
+      "value": "Hannah Tenenbaum"
+    },
+    {
+      "type": "Email",
+      "value": "htenenbaum@paradigmagency.com"
+    }
+  ],
+  "PUBLICIST": [
+    {
+      "type": "Other",
+      "value": "Imprint"
+    },
+    {
+      "type": "Website",
+      "value": "imprintpr.com"
+    },
+    {
+      "type": "Email",
+      "value": "info@imprintpr.com"
+    },
+    {
+      "type": "Address",
+      "value": "953 N Sycamore Ave, Suite 750, Los Angeles, 90038, CALIFORNIA, USA"
+    },
+    {
+      "type": "Agent",
+      "value": "Maria Candida"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 424 369 4202"
+    },
+    {
+      "type": "Agent",
+      "value": "Melissa Raubvogel"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 646 693 0561"
+    },
+    {
+      "type": "Email",
+      "value": "mraubvogel@imprintpr.com"
+    },
+    {
+      "type": "Address",
+      "value": "600 5th Avenue, 2nd Floor, New York, 10020, NY"
+    },
+    {
+      "type": "Agent",
+      "value": "Nicole Perna"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 424 369 4199"
+    },
+    {
+      "type": "Email",
+      "value": "nperna@imprintpr.com"
+    }
+  ],
+  "LEGAL REPRESENTATIVE": [
+    {
+      "type": "Other",
+      "value": "Hansen, Jacobson, Teller, Hoberman, Newman, Warren, Richman, Rush, Kaller, Gellman, Meigs & Fox"
+    },
+    {
+      "type": "Website",
+      "value": "hjth.com"
+    },
+    {
+      "type": "Other",
+      "value": "+1 310 271 8310Fax"
+    },
+    {
+      "type": "Address",
+      "value": "450 N Roxbury Dr, 8th Fl, Beverly Hills, 90210, CA, USA"
+    },
+    {
+      "type": "Agent",
+      "value": "Stewart Brookman"
+    },
+    {
+      "type": "Phone",
+      "value": "+1 310 248 3103"
+    },
+    {
+      "type": "Email",
+      "value": "sb@hjth.com"
+    }
+  ],
+  "GUILD / UNION / ASSOCIATION": [
+    {
+      "type": "Other",
+      "value": "SAG-AFTRA"
+    },
+    {
+      "type": "Website",
+      "value": "sagaftra.org"
+    },
+    {
+      "type": "Phone",
+      "value": "323-954-1600"
+    },
+    {
+      "type": "Other",
+      "value": "323-549-6603Fax"
+    },
+    {
+      "type": "Email",
+      "value": "info@sagaftra.org"
+    },
+    {
+      "type": "Address",
+      "value": "5757 Wilshire Blvd., Los Angeles, 90036, CA, USA"
+    }
+  ]
+}

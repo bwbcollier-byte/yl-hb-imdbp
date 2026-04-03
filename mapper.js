@@ -85,22 +85,35 @@ function mapTalentProfile(pageProps) {
         com_publicist:            [],
         com_legal_representative: []
     };
+    const structured_reps = [];
 
     const repEdges = main?.representation?.edges || [];
     for (const edge of repEdges) {
         const node    = edge?.node;
         const relType = (node?.relationshipType?.text || '').toLowerCase();
         const company = node?.agency?.company?.companyText?.text;
+        const companyId = node?.agency?.company?.id || null;
 
         if (!company) continue;
 
-        const agentNames = (node?.agents || [])
-            .map(a => a?.name?.nameText?.text)
-            .filter(Boolean);
+        const agents = (node?.agents || []).map(a => ({
+            name: a?.name?.nameText?.text || null,
+            id:   a?.name?.id || null
+        })).filter(a => a.name);
+
+        const agentNames = agents.map(a => a.name);
 
         const entry = agentNames.length > 0
             ? `${company} (${agentNames.join(', ')})`
             : company;
+
+        const rep_item = {
+            type:      relType,
+            company:   company,
+            companyId: companyId,
+            agents:    agents
+        };
+        structured_reps.push(rep_item);
 
         if (relType.includes('manager') || relType.includes('management')) {
             repBuckets.com_management.push(entry);
@@ -129,6 +142,7 @@ function mapTalentProfile(pageProps) {
         imdb_known_for_titles,
         imdbpro_url: `https://pro.imdb.com/name/${imdb_id}/`,
         imdb_image,
+        structured_reps, // Added for deep enrichment
         updated_at:  new Date().toISOString()
     };
 }

@@ -35,5 +35,8 @@ jobs:
           IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
           IMDBPRO_USER_AGENT: ${{ secrets.IMDBPRO_USER_AGENT }}
           IMDBPRO_SESSION_ID: ${{ secrets.IMDBPRO_SESSION_ID }}
+          AIRTABLE_PAT: ${{ secrets.AIRTABLE_PAT }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_RECORD_ID: recNrykXHdIhU1J8Y
           URLS_JSON: ${{ github.event.inputs.urls_json }}
         run: node main.js

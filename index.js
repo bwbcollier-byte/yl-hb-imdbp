@@ -15,6 +15,7 @@ const {
     upsertCompany, 
     upsertContact 
 } = require('./db');
+const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 require('dotenv').config();
 
 // CONFIG: The Discover page to start from
@@ -77,11 +78,13 @@ async function processNmId(nmId) {
 async function main() {
     console.log('🚀 Starting IMDbPro Discover Pipeline...');
     console.log(`📍 List Page: ${DISCOVER_URL}`);
+    await updateWorkflowHeartbeat('Running', `Discovering profiles starting from ${DISCOVER_URL}...`);
 
     try {
         // Step 1: Fetch list of IDs
         const nmIds = await fetchDiscoverIds(DISCOVER_URL);
         console.log(`📝 Found ${nmIds.length} talent profiles in list.`);
+        await updateWorkflowHeartbeat('Running', `Found ${nmIds.length} talent profiles. Starting deep scrapes...`);
 
         if (nmIds.length === 0) {
             console.log('⚠️  No IDs found. Check your session cookies or Discover URL.');
@@ -94,6 +97,7 @@ async function main() {
             console.log(`\n[${i + 1}/${nmIds.length}]`);
             
             await processNmId(nmId);
+            await updateWorkflowHeartbeat('Running', `Processed ${i + 1}/${nmIds.length} profiles from Discovery list.`);
 
             // Sequential Sleep
             if (i < nmIds.length - 1) {
@@ -102,6 +106,7 @@ async function main() {
                 await sleep(delay);
             }
         }
+        await updateWorkflowHeartbeat('Ready', `Success: Completed ${nmIds.length} profiles from discovery list.`);
 
     } catch (error) {
         console.error('💥 Pipeline error:', error.message);

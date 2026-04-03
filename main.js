@@ -21,6 +21,7 @@ const {
     extractContactsFromCompany
 } = require('./mapper');
 const { upsertData } = require('./db');
+const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 require('dotenv').config();
 
 // ─── URL Queue ──────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ async function main() {
 
     console.log(`\n🚀 IMDbPro Scraper — ${URLS.length} URL(s) queued`);
     console.log('─'.repeat(60));
+    await updateWorkflowHeartbeat('Running', `Queue initialized with ${URLS.length} URLs.`);
 
     let successCount = 0;
     let failCount    = 0;
@@ -140,9 +142,11 @@ async function main() {
             }
 
             successCount++;
+            await updateWorkflowHeartbeat('Running', `Processing Queue: ${successCount} Success / ${failCount} Errors.`);
         } catch (err) {
             failCount++;
             console.error(`   ❌ Error: ${err.message}`);
+            await updateWorkflowHeartbeat('Running', `Processing Queue: ${successCount} Success / ${failCount} Errors.`);
         }
 
         // Rate limit: random 8–15 second delay between requests
@@ -155,6 +159,7 @@ async function main() {
 
     console.log('\n' + '─'.repeat(60));
     console.log(`🏁 Done!  Success: ${successCount}  |  Failed: ${failCount}  |  Total: ${URLS.length}`);
+    await updateWorkflowHeartbeat('Ready', `Success: ${successCount}  |  Errors: ${failCount}`);
 }
 
 // ─── Entry ──────────────────────────────────────────────────────────
