@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+// airtable-heartbeat.js — Uses native global fetch (available in Node 18+)
 
 /**
  * Updates the workflow status and message in Airtable for heartbeat monitoring.
