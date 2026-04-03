@@ -1,8 +1,9 @@
 /**
  * imdbpro-crm-induction.js — Master CRM Discovery & Enrichment Pipeline
- * Scans hb_talent for profiles with an IMDb ID but no CRM contacts,
- * then deep-scrapes their representation (Agents, Managers, Publicists)
- * and populates the hb_contacts and hb_companies tables.
+ * Scans hb_talent for profiles missing CRM contacts,
+ * follows the soc_imdb pointer into the hb_socials table to get the nmID,
+ * deep-scrapes their representation (Agents, Managers, Publicists) from IMDbPro,
+ * and populates the hb_contacts and hb_companies tables in Supabase.
  */
 require('dotenv').config();
 const { fetchPageProps, sleep, getRandomDelay } = require('./scraper');
@@ -18,16 +19,24 @@ const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 const LIMIT = 20;
 
 async function processTalentContacts(talent) {
-    const nmId = talent.id_imdb;
+    // Follow the pointer: hb_socials is nested because of the soc_imdb link
+    const nmId = talent.hb_socials?.id_imdb;
+
+    if (!nmId) {
+        console.error(`   ⚠️ Skipping ${talent.name}: No id_imdb found in linked socials (${talent.id})`);
+        return false;
+    }
+
     const url = `https://pro.imdb.com/name/${nmId}/`;
-    
     console.log(`\n🔍 Scraping Representation: ${talent.name} (${nmId}) -> ${url}`);
     
     try {
         const pageProps = await fetchPageProps(url);
         if (!pageProps) throw new Error('Failed to fetch IMDbPro pageProps');
 
-        // Extract representation data from pageProps
+        const main = pageProps?.mainColumnData;
+        const repEdges = main?.representation?.edges || [];
+        
         let updates = {
             contacts_all: [],
             contacts_updated: new Date().toISOString(),
@@ -94,7 +103,7 @@ async function processTalentContacts(talent) {
             }
         }
 
-        // 3. Update Talent Record with full relational link graph
+        // Finalize Talent Links
         const { error: updateErr } = await supabase
             .from('hb_talent')
             .update(updates)
@@ -111,15 +120,20 @@ async function processTalentContacts(talent) {
 }
 
 async function main() {
-    console.log('🚀 Starting IMDbPro CRM Induction Pipeline...');
-    await updateWorkflowHeartbeat('Running', 'Scanning for un-enriched talent in Supabase...');
+    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Relational Mapping Mode)...');
+    await updateWorkflowHeartbeat('Running', 'Joining hb_talent with hb_socials for nmID induction...');
 
     try {
-        // Step 1: Find talent with IMDb ID but NO CRM contacts updated yet
+        // Step 1: Find talent with a social link but NO CRM contacts updated yet
+        // We use a nested select to follow the soc_imdb link into hb_socials
         const { data: talents, error: fetchErr } = await supabase
             .from('hb_talent')
-            .select('id, name, id_imdb')
-            .not('id_imdb', 'is', null)
+            .select(`
+                id, 
+                name, 
+                hb_socials!soc_imdb(id_imdb)
+            `)
+            .not('soc_imdb', 'is', null)
             .is('contacts_updated', null)
             .limit(LIMIT);
 
