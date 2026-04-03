@@ -2,6 +2,11 @@ name: IMDbPro CRM Enrichment
 
 on:
   workflow_dispatch:
+    inputs:
+      IMDBPRO_COOKIE:
+        description: 'IMDbPro Session Cookie (Optional: Override secrets)'
+        required: false
+        type: string
   schedule:
     # Run once daily at midnight UTC
     - cron: "0 0 * * *"
@@ -30,7 +35,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
+          IMDBPRO_COOKIE: ${{ github.event.inputs.IMDBPRO_COOKIE || secrets.IMDBPRO_COOKIE }}
           IMDBPRO_USER_AGENT: ${{ secrets.IMDBPRO_USER_AGENT }}
           IMDBPRO_SESSION_ID: ${{ secrets.IMDBPRO_SESSION_ID }}
           AIRTABLE_PAT: ${{ secrets.AIRTABLE_PAT }}
