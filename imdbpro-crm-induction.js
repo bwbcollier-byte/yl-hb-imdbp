@@ -1,8 +1,7 @@
 /**
  * imdbpro-crm-induction.js — Master CRM Discovery & Enrichment Pipeline
  * Scans hb_talent for profiles missing CRM contacts,
- * follows the soc_imdb UUID pointer from hb_talent into the hb_socials table,
- * pulls the id_imdb (nmID string) from hb_socials,
+ * finds their linked IMDb nmID from the hb_socials table (using type 'IMDB'),
  * deep-scrapes their representation (Agents, Managers, Publicists) from IMDbPro,
  * and populates the hb_contacts and hb_companies tables in Supabase.
  */
@@ -20,15 +19,20 @@ const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 const LIMIT = 20;
 
 async function processTalentContacts(talent) {
-    // nmID induction: Following the soc_imdb link into hb_socials
-    // The actual nmID string is stored in the id_imdb column of hb_socials.
-    const nmId = talent.hb_socials?.id_imdb;
+    // 1. Find the IMDb identifier in the verticals socials table
+    const { data: social, error: socialErr } = await supabase
+        .from('hb_socials')
+        .select('identifier')
+        .eq('linked_talent', talent.id)
+        .eq('type', 'IMDB')
+        .single();
 
-    if (!nmId) {
-        console.error(`   ⚠️ Skipping ${talent.name}: No id_imdb found in linked hb_socials record.`);
+    if (socialErr || !social?.identifier) {
+        console.error(`   ⚠️ Skipping ${talent.name}: No IMDB identifier found in socials registry.`);
         return false;
     }
 
+    const nmId = social.identifier;
     const url = `https://pro.imdb.com/name/${nmId}/`;
     console.log(`\n🔍 Scraping Representation: ${talent.name} (${nmId}) -> ${url}`);
     
@@ -122,19 +126,14 @@ async function processTalentContacts(talent) {
 }
 
 async function main() {
-    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Supreme Sync Mode)...');
-    await updateWorkflowHeartbeat('Running', 'Joining hb_talent with hb_socials using relational pointers...');
+    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Multi-Table Discovery Mode)...');
+    await updateWorkflowHeartbeat('Running', 'Scanning hb_talent and linking to hb_socials vertically...');
 
     try {
-        // Corrected Joint select: Following the pointer from hb_talent.soc_imdb (UUID) to hb_socials.id_imdb (nmId)
+        // Find talent records that need enrichment
         const { data: talents, error: fetchErr } = await supabase
             .from('hb_talent')
-            .select(`
-                id, 
-                name, 
-                hb_socials!soc_imdb(id_imdb)
-            `)
-            .not('soc_imdb', 'is', null)
+            .select('id, name')
             .is('contacts_updated', null)
             .limit(LIMIT);
 
@@ -146,7 +145,7 @@ async function main() {
             return;
         }
 
-        console.log(`📋 Found ${talents.length} talent profiles for CRM induction.`);
+        console.log(`📋 Found ${talents.length} talent records to investigate.`);
         await updateWorkflowHeartbeat('Running', `Processing ${talents.length} profiles for CRM induction...`);
 
         let successCount = 0;
