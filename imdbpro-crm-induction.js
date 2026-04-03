@@ -1,7 +1,8 @@
 /**
  * imdbpro-crm-induction.js — Master CRM Discovery & Enrichment Pipeline
  * Scans hb_talent for profiles missing CRM contacts,
- * follows the soc_imdb pointer from hb_talent into the hb_socials table to get the nmID (soc_imdb field),
+ * follows the soc_imdb UUID pointer from hb_talent into the hb_socials table,
+ * pulls the id_imdb (nmID string) from hb_socials,
  * deep-scrapes their representation (Agents, Managers, Publicists) from IMDbPro,
  * and populates the hb_contacts and hb_companies tables in Supabase.
  */
@@ -19,12 +20,12 @@ const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 const LIMIT = 20;
 
 async function processTalentContacts(talent) {
-    // nmID induction: hb_socials is nested because of the talent.soc_imdb link
-    // The actual nmID string is in the hb_socials.soc_imdb field.
-    const nmId = talent.hb_socials?.soc_imdb;
+    // nmID induction: Following the soc_imdb link into hb_socials
+    // The actual nmID string is stored in the id_imdb column of hb_socials.
+    const nmId = talent.hb_socials?.id_imdb;
 
     if (!nmId) {
-        console.error(`   ⚠️ Skipping ${talent.name}: No soc_imdb found in linked socials (${talent.id})`);
+        console.error(`   ⚠️ Skipping ${talent.name}: No id_imdb found in linked hb_socials record.`);
         return false;
     }
 
@@ -121,17 +122,17 @@ async function processTalentContacts(talent) {
 }
 
 async function main() {
-    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Relational Graph Mode)...');
-    await updateWorkflowHeartbeat('Running', 'Scanning hb_talent for un-enriched records...');
+    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Supreme Sync Mode)...');
+    await updateWorkflowHeartbeat('Running', 'Joining hb_talent with hb_socials using relational pointers...');
 
     try {
-        // Corrected Joint select: Following the UUID from talent.soc_imdb (link) to socials.soc_imdb (nmId)
+        // Corrected Joint select: Following the pointer from hb_talent.soc_imdb (UUID) to hb_socials.id_imdb (nmId)
         const { data: talents, error: fetchErr } = await supabase
             .from('hb_talent')
             .select(`
                 id, 
                 name, 
-                hb_socials!soc_imdb(soc_imdb)
+                hb_socials!soc_imdb(id_imdb)
             `)
             .not('soc_imdb', 'is', null)
             .is('contacts_updated', null)
@@ -141,7 +142,7 @@ async function main() {
 
         if (!talents || talents.length === 0) {
             console.log('✅ No new talent profiles need CRM induction.');
-            await updateWorkflowHeartbeat('Ready', 'Idle: All active talent records are CRM-enriched.');
+            await updateWorkflowHeartbeat('Ready', 'Idle: All talent records are CRM-enriched.');
             return;
         }
 
