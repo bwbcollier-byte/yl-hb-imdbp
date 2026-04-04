@@ -151,53 +151,64 @@ async function findOrCreateTalent(person) {
 async function main() {
     if (!TMDB_API_KEY) console.log('⚠️  No TMDB_API_KEY — talent will be created without TMDB enrichment.\n');
 
-    console.log(`⭐ IMDbPro Starmeter Discovery (starting page ${START_PAGE})`);
+    const maxPages = parseInt(process.env.STARMETER_MAX_PAGES || '10', 10);
+    console.log(`⭐ IMDbPro Starmeter Discovery (starting page ${START_PAGE}, max pages ${maxPages})`);
     console.log('='.repeat(50));
 
+    let createdTotal = 0;
+    let existingTotal = 0;
+    let updatedTotal = 0;
+    let failedTotal = 0;
+    let scannedTotal = 0;
+
     try {
-        const people = await fetchStarmeterPage(START_PAGE);
+        for (let pageNum = START_PAGE; pageNum < START_PAGE + maxPages; pageNum++) {
+            console.log(`\n📄 Fetching Page ${pageNum}...`);
+            const people = await fetchStarmeterPage(pageNum);
 
-        if (!people || people.length === 0) {
-            return console.log('✅ No people found on starmeter pages.');
-        }
-
-        console.log(`\n🎯 ${people.length} people scraped. Processing...\n`);
-
-        let created = 0;
-        let existing = 0;
-        let updated = 0;
-        let failed = 0;
-
-        for (let i = 0; i < people.length; i++) {
-            const person = people[i];
-            const result = await findOrCreateTalent(person);
-
-            if (!result) {
-                failed++;
-                continue;
+            if (!people || people.length === 0) {
+                console.log(`✅ No more people found at page ${pageNum}. Stopping.`);
+                break;
             }
 
-            if (result.isNew) {
-                created++;
-            } else {
-                existing++;
-                if (person.imdb_rank) updated++;
-                console.log(`      ✅ #${person.imdb_rank || '?'} ${person.name} (exists${person.imdb_rank ? ', rank updated' : ''})`);
+            scannedTotal += people.length;
+            console.log(`🎯 ${people.length} people scraped. Processing...\n`);
+
+            for (let i = 0; i < people.length; i++) {
+                const person = people[i];
+                const result = await findOrCreateTalent(person);
+
+                if (!result) {
+                    failedTotal++;
+                    continue;
+                }
+
+                if (result.isNew) {
+                    createdTotal++;
+                } else {
+                    existingTotal++;
+                    if (person.imdb_rank) updatedTotal++;
+                    console.log(`      ✅ #${person.imdb_rank || '?'} ${person.name} (exists${person.imdb_rank ? ', rank updated' : ''})`);
+                }
             }
 
-            // Progress every 25 people
-            if ((i + 1) % 25 === 0 || i === people.length - 1) {
-                console.log(`   📊 Progress: ${i + 1}/${people.length} | New: ${created} | Existing: ${existing} | Rank Updates: ${updated} | Failed: ${failed}`);
+            console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal} | Rank Updates: ${updatedTotal} | Failed: ${failedTotal}`);
+
+            if (people.length < 50) {
+                console.log(`   🔸 Less than 50 people on page, assuming it's the last page.`);
+                break;
             }
+
+            await sleep(getRandomDelay(2000, 4000));
         }
 
         console.log(`\n${'='.repeat(50)}`);
-        console.log(`✅ Done.`);
-        console.log(`   🆕 Created:       ${created}`);
-        console.log(`   📂 Already Exist: ${existing}`);
-        console.log(`   📈 Ranks Updated: ${updated}`);
-        console.log(`   ❌ Failed:        ${failed}`);
-        console.log(`   📊 Total:         ${people.length}`);
+        console.log(`✅ Run Complete.`);
+        console.log(`   🆕 Created:       ${createdTotal}`);
+        console.log(`   📂 Already Exist: ${existingTotal}`);
+        console.log(`   📈 Ranks Updated: ${updatedTotal}`);
+        console.log(`   ❌ Failed:        ${failedTotal}`);
+        console.log(`   📊 Total Scanned: ${scannedTotal}`);
     } finally {
         await closeBrowser();
     }
