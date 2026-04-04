@@ -2,3 +2,17 @@ node_modules
 .env
 .DS_Store
 *.log
+
+# Test/debug files
+*.png
+test_*.js
+debug*.js
+debug*.png
+debug*.html
+company_*.json
+parse_*.js
+check-*.js
+quick.js
+dump_*.js
+verify-*.js
+test_output.txt

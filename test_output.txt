@@ -1,3 +1,0 @@
-Testing CAA Staff Scraper...
-Scraped Staff Count: 0
-Sample: undefined undefined
