@@ -165,15 +165,39 @@ async function main() {
 
         let created = 0;
         let existing = 0;
+        let updated = 0;
+        let failed = 0;
 
-        for (const person of people) {
+        for (let i = 0; i < people.length; i++) {
+            const person = people[i];
             const result = await findOrCreateTalent(person);
-            if (!result) continue;
-            if (result.isNew) created++;
-            else existing++;
+
+            if (!result) {
+                failed++;
+                continue;
+            }
+
+            if (result.isNew) {
+                created++;
+            } else {
+                existing++;
+                if (person.imdb_rank) updated++;
+                console.log(`      ✅ #${person.imdb_rank || '?'} ${person.name} (exists${person.imdb_rank ? ', rank updated' : ''})`);
+            }
+
+            // Progress every 25 people
+            if ((i + 1) % 25 === 0 || i === people.length - 1) {
+                console.log(`   📊 Progress: ${i + 1}/${people.length} | New: ${created} | Existing: ${existing} | Rank Updates: ${updated} | Failed: ${failed}`);
+            }
         }
 
-        console.log(`\n✅ Done. Created: ${created} | Existing: ${existing} | Total: ${people.length}`);
+        console.log(`\n${'='.repeat(50)}`);
+        console.log(`✅ Done.`);
+        console.log(`   🆕 Created:       ${created}`);
+        console.log(`   📂 Already Exist: ${existing}`);
+        console.log(`   📈 Ranks Updated: ${updated}`);
+        console.log(`   ❌ Failed:        ${failed}`);
+        console.log(`   📊 Total:         ${people.length}`);
     } finally {
         await closeBrowser();
     }
