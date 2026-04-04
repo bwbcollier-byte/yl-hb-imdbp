@@ -73,7 +73,7 @@ async function main() {
             .from('hb_companies')
             .select('id, name, soc_imdb_id, logo')
             .not('soc_imdb_id', 'is', null)
-            .is('location', null) // Target companies without location details
+            .is('check_imdbp', null) // Target companies that haven't been newly scanned
             .limit(LIMIT);
 
         if (!companies?.length) return console.log('✅ Done.');
