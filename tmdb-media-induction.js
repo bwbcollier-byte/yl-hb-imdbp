@@ -144,6 +144,13 @@ async function processMedia(media) {
     let tmdbId = media.soc_tmdb_id;
     let mediaType = media.media_type || 'movie';
 
+    // TMDB does not track video games. We simply skip API enrichment for them.
+    if (mediaType === 'game') {
+        console.log(`   🎮 Media is a Video Game. Skipping TMDB enrichment as TMDB only tracks Movies and TV.`);
+        await supabase.from('hb_media').update({ check_tmdb_enrichment: new Date().toISOString() }).eq('id', media.id);
+        return true;
+    }
+
     // 1. Resolve TMDB ID if missing
     if (!tmdbId && media.soc_imdb_id) {
         const findRes = await tmdbFetch(`/find/${media.soc_imdb_id}?external_source=imdb_id`);
