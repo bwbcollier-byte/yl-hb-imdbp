@@ -41,4 +41,6 @@ jobs:
           AIRTABLE_PAT: ${{ secrets.AIRTABLE_PAT }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           AIRTABLE_RECORD_ID: reci8liOZAVmuhcmz
-        run: node imdbpro-crm-induction.js
+        run: |
+          chmod +x overnight-imdb-contacts.sh
+          ./overnight-imdb-contacts.sh

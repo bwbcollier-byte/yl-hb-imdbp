@@ -1,157 +1,109 @@
-/**
- * scraper.js — Rate-limited IMDbPro page fetcher using Cheerio
- */
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 
-const axios = require('axios');
-const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
-require('dotenv').config();
+const COOKIE = process.env.IMDBPRO_COOKIE;
+let browser = null;
 
-// ─── Session Headers ────────────────────────────────────────────────
-const sanitize = (val) => {
-    let s = (val || '').trim().replace(/\r?\n|\r/g, '');
-    // Remove surrounding quotes if they exist
-    if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
-    return s;
-};
+function parseCookies(s) {
+    return s.split(';').map(c => {
+        const [n, ...r] = c.trim().split('=');
+        return { name: n.trim(), value: r.join('=').trim(), domain: '.imdb.com', path: '/' };
+    }).filter(c => c.name && c.value);
+}
 
-const COOKIE      = sanitize(process.env.IMDBPRO_COOKIE);
-const USER_AGENT  = sanitize(process.env.IMDBPRO_USER_AGENT) || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-const SESSION_ID  = sanitize(process.env.IMDBPRO_SESSION_ID);
+async function getBrowser() {
+    if (browser && browser.connected) return browser;
+    browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    return browser;
+}
 
-/**
- * Scrapes an IMDbPro search list or discover page for NM IDs using a headless browser.
- * IMDbPro Discover is a React app that loads results dynamically, so we need Puppeteer.
- *
- * @param {string} url  The Discover People or search results URL
- * @returns {string[]}  Array of NM IDs (nmXXXXXXX)
- */
-async function fetchDiscoverIds(url) {
-    if (!COOKIE) throw new Error('IMDBPRO_COOKIE is not set.');
+async function closeBrowser() {
+    if (browser) { await browser.close(); browser = null; }
+}
 
-    console.log('   🌐 Launching browser for discovery...');
-    const browser = await puppeteer.launch({ 
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+async function fetchPageProps(url) {
+    const nmId = url.match(/nm\d+/)?.[0];
+    if (!nmId) return [];
+    const br = await getBrowser();
+
+    // Fresh page per talent to avoid WAF session corruption
+    const page = await br.newPage();
+    if (COOKIE) await page.setCookie(...parseCookies(COOKIE));
+
+    const targets = [
+        `https://pro.imdb.com/name/${nmId}/`,
+        `https://pro.imdb.com/name/${nmId}/contacts`
+    ];
+    let allFound = [];
 
     try {
-        const page = await browser.newPage();
-        await page.setUserAgent(USER_AGENT);
+        for (const target of targets) {
+            try {
+                await page.goto(target, { waitUntil: 'networkidle2', timeout: 20000 });
 
-        // Parse and set cookies
-        const cookies = COOKIE.split(';').map(c => {
-            const [name, ...rest] = c.trim().split('=');
-            return { name: name.trim(), value: rest.join('=').trim(), domain: '.imdb.com', path: '/' };
-        }).filter(c => c.name && c.value);
-        
-        await page.setCookie(...cookies);
+                const data = await page.evaluate(() => {
+                    let reps = [];
+                    const nextData = document.querySelector('#__NEXT_DATA__');
+                    if (nextData) {
+                        try {
+                            const json = JSON.parse(nextData.innerHTML);
+                            const scan = (o) => {
+                                if (!o || typeof o !== 'object') return;
+                                if (o.agency?.company?.id) {
+                                    reps.push({
+                                        type: o.relationshipType?.text || o.typeName || 'AGENT',
+                                        company: {
+                                            id: o.agency.company.id,
+                                            name: o.agency.company.companyText?.text || o.agency.company.name
+                                        },
+                                        agents: (o.agency.agents || []).map(a => ({
+                                            id: a.name?.id || a.id,
+                                            name: a.name?.nameText?.text || a.name
+                                        })).filter(a => a.id && a.name)
+                                    });
+                                }
+                                Object.values(o).forEach(scan);
+                            };
+                            scan(json.props?.pageProps);
+                        } catch (e) {}
+                    }
+                    if (reps.length === 0) {
+                        document.querySelectorAll('a[href*="/company/co"]').forEach(l => {
+                            reps.push({
+                                type: 'REPR',
+                                company: {
+                                    id: l.getAttribute('href').split('/')[2],
+                                    name: l.innerText.trim()
+                                }
+                            });
+                        });
+                    }
+                    return reps;
+                });
 
-        console.log(`   📍 Navigating to: ${url}`);
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        console.log('   ⏳ Waiting for talent results...');
-        await page.waitForFunction(() => {
-            return document.querySelectorAll('a[href*="/name/nm"]').length > 0;
-        }, { timeout: 20000 }).catch(() => console.log('   ⚠️  Discovery timeout. Scanned partial DOM.'));
-
-        // Brief delay for stable render
-        await new Promise(r => setTimeout(r, 2000));
-
-        const ids = await page.evaluate(() => {
-            const set = new Set();
-            document.querySelectorAll('a[href*="/name/nm"]').forEach(a => {
-                const m = a.href.match(/\/name\/(nm\d+)/);
-                if (m) set.add(m[1]);
-            });
-            document.querySelectorAll('[data-const-id^="nm"]').forEach(el => {
-                set.add(el.getAttribute('data-const-id'));
-            });
-            return Array.from(set);
-        });
-
-        return ids;
+                allFound = [...allFound, ...data];
+                if (allFound.length > 0) break;
+            } catch (e) {
+                // WAF challenge or nav error — try next URL
+            }
+        }
     } finally {
-        await browser.close();
-    }
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/** Returns a random int between min and max (inclusive), in ms */
-function getRandomDelay(min = 8000, max = 15000) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-// ─── Core Fetcher ───────────────────────────────────────────────────
-/**
- * Fetch an IMDbPro page and extract the __NEXT_DATA__ JSON payload.
- *
- * @param {string} url  Full IMDbPro URL
- * @returns {object}    The parsed __NEXT_DATA__ object (full root, not just pageProps)
- */
-async function fetchPage(url) {
-    if (!COOKIE) {
-        throw new Error('IMDBPRO_COOKIE is not set in .env — authentication will fail.');
+        await page.close();
     }
 
-    const headers = {
-        'Cookie':             COOKIE,
-        'User-Agent':         USER_AGENT,
-        'Accept':             'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language':    'en-US,en;q=0.9',
-        'Cache-Control':     'no-cache',
-        'Sec-Fetch-Dest':    'document',
-        'Sec-Fetch-Mode':    'navigate',
-        'Sec-Fetch-Site':    'none',
-    };
-
-    // Only add session ID if provided
-    if (SESSION_ID) {
-        headers['x-amzn-session-id'] = SESSION_ID;
-    }
-
-    const response = await axios.get(url, {
-        headers,
-        timeout: 30000,               // 30s timeout
-        maxRedirects: 5,
-        validateStatus: (s) => s < 400 // treat 3xx as OK
+    // Deduplicate by company ID
+    const seen = new Set();
+    return allFound.filter(r => {
+        if (!r.company?.id || seen.has(r.company.id)) return false;
+        seen.add(r.company.id);
+        return true;
     });
-
-    // Check for login redirect or blocked page
-    if (typeof response.data !== 'string') {
-        throw new Error(`Response is not HTML (got ${typeof response.data}). Possible auth failure.`);
-    }
-    if (response.data.includes('Sign in') && response.data.includes('ap_email')) {
-        throw new Error('Session expired — page returned IMDb login form.');
-    }
-
-    const $ = cheerio.load(response.data);
-    const scriptContent = $('script#__NEXT_DATA__[type="application/json"]').html();
-
-    if (!scriptContent) {
-        // Dump a snippet of the page so we can debug
-        const title = $('title').text();
-        throw new Error(`__NEXT_DATA__ not found on page. Page title: "${title}"`);
-    }
-
-    const parsed = JSON.parse(scriptContent);
-    return parsed;
 }
 
-/**
- * Convenience wrapper that returns only props.pageProps from the __NEXT_DATA__.
- */
-async function fetchPageProps(url) {
-    const data = await fetchPage(url);
-    const pageProps = data?.props?.pageProps;
-    if (!pageProps) {
-        throw new Error('Parsed __NEXT_DATA__ but props.pageProps is missing or empty.');
-    }
-    return pageProps;
-}
-
-module.exports = { fetchPage, fetchPageProps, fetchDiscoverIds, sleep, getRandomDelay };
+module.exports = {
+    fetchPageProps,
+    closeBrowser,
+    sleep: ms => new Promise(r => setTimeout(r, ms)),
+    getRandomDelay: (min, max) => Math.floor(Math.random() * (max - min + 1) + min)
+};

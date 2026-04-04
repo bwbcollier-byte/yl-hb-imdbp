@@ -1,180 +1,153 @@
-/**
- * imdbpro-crm-induction.js — Master CRM Discovery & Enrichment Pipeline
- * Scans hb_talent for profiles missing CRM contacts,
- * finds their linked IMDb nmID from the hb_socials table (using type 'IMDB'),
- * deep-scrapes their representation (Agents, Managers, Publicists) from IMDbPro,
- * and populates the hb_contacts and hb_companies tables in Supabase.
- */
 require('dotenv').config();
-const { fetchPageProps, sleep, getRandomDelay } = require('./scraper');
-const { 
-    mapTalentProfile, 
-    mapCompanyProfile, 
-    mapContactProfile 
-} = require('./mapper');
+const { fetchPageProps, closeBrowser, sleep, getRandomDelay } = require('./scraper');
 const { supabase } = require('./db');
-const { updateWorkflowHeartbeat } = require('./airtable-heartbeat');
 
-// CONFIG: How many talents to process in one run
-const LIMIT = 20;
+const LIMIT = 100;
+
+async function findOrCreateCompany(co, category) {
+    if (!co || !co.id) return null;
+    const { data: existing } = await supabase.from('hb_companies').select('id').eq('soc_imdb_id', co.id).limit(1).maybeSingle();
+    if (existing) return existing.id;
+    
+    const { data: inserted, error } = await supabase
+        .from('hb_companies')
+        .insert({ soc_imdb_id: co.id, name: co.name, company_type: category, status: 'Active' })
+        .select('id')
+        .single();
+    
+    if (error) {
+        console.log(`   ⚠️ Insert error for Company ${co.name}: ${error.message}`);
+        return null;
+    }
+    return inserted.id;
+}
+
+async function findOrCreateContact(person, companyId, companyName, category) {
+    if (!person || !person.id) return null;
+    const { data: existing } = await supabase.from('hb_contacts').select('id').eq('soc_imdb_id', person.id).limit(1).maybeSingle();
+    
+    if (existing) return existing.id;
+
+    // IMDB returns full name, split it for the DB
+    let name_full = person.name || 'Unknown';
+    let parts = name_full.split(' ');
+    let first_name = parts[0] || '';
+    let last_name = parts.slice(1).join(' ') || '';
+
+    const { data: inserted, error } = await supabase
+        .from('hb_contacts')
+        .insert({ 
+            soc_imdb_id: person.id, 
+            name_full: name_full,
+            first_name: first_name,
+            last_name: last_name,
+            linked_company: companyId,
+            company_name: companyName,
+            role: category, 
+            status: 'Lead',
+            is_active: true
+        })
+        .select('id')
+        .single();
+    
+    if (error) {
+        console.log(`   ⚠️ Insert error for Contact ${name_full}: ${error.message}`);
+        return null;
+    }
+    return inserted.id;
+}
+
+function getArrayPrefix(category) {
+    if (category.includes('MANAGER')) return 'management';
+    if (category.includes('PUBLICIST')) return 'publicist';
+    if (category.includes('LEGAL')) return 'legal';
+    if (category.includes('APPEARANCE')) return 'appearance';
+    if (category.includes('COMMERCIAL')) return 'agenctcommercial';
+    // Catch-all is standard agent
+    return 'agenct';
+}
 
 async function processTalentContacts(talent) {
-    // 1. Find the IMDb identifier in the verticals socials table
-    const { data: social, error: socialErr } = await supabase
-        .from('hb_socials')
-        .select('identifier')
-        .eq('linked_talent', talent.id)
-        .eq('type', 'IMDB')
-        .single();
-
-    if (socialErr || !social?.identifier) {
-        console.error(`   ⚠️ Skipping ${talent.name}: No IMDB identifier found in socials registry.`);
+    const { data: social } = await supabase.from('hb_socials').select('identifier').eq('linked_talent', talent.id).eq('type', 'IMDB').maybeSingle();
+    if (!social || !social.identifier) {
+        // Mark as updated so we don't get stuck in a loop trying to fetch this person forever
+        await supabase.from('hb_talent').update({ contacts_updated: new Date().toISOString() }).eq('id', talent.id);
         return false;
     }
-
-    const nmId = social.identifier;
-    const url = `https://pro.imdb.com/name/${nmId}/`;
-    console.log(`\n🔍 Scraping Representation: ${talent.name} (${nmId}) -> ${url}`);
+    
+    const url = "https://pro.imdb.com/name/" + social.identifier + "/";
+    console.log(`\n🔍 ${talent.name}`);
     
     try {
-        const pageProps = await fetchPageProps(url);
-        if (!pageProps) throw new Error('Failed to fetch IMDbPro pageProps');
+        const reps = await fetchPageProps(url);
+        if (!reps || reps.length === 0) {
+            console.log("   🤷 No contacts listed.");
+            await supabase.from('hb_talent').update({ contacts_updated: new Date().toISOString() }).eq('id', talent.id);
+            return true;
+        }
 
-        const main = pageProps?.mainColumnData;
-        const repEdges = main?.representation?.edges || [];
-        
-        let updates = {
-            contacts_all: [],
-            contacts_updated: new Date().toISOString(),
-            appearance_contacts: [], legal_contacts: [], publicist_contacts: [], agenct_contacts: [], agenctcommercial_contacts: [], management_contacts: [],
-            appearance_companies: [], legal_companies: [], publicist_companies: [], agenct_companies: [], agenctcommercial_companies: [], management_companies: []
+        // Initialize arrays
+        let updateData = {
+            agenct_companies: [], agenct_contacts: [],
+            agenctcommercial_companies: [], agenctcommercial_contacts: [],
+            management_companies: [], management_contacts: [],
+            appearance_companies: [], appearance_contacts: [],
+            legal_companies: [], legal_contacts: [],
+            publicist_companies: [], publicist_contacts: []
         };
+        let companyCount = 0;
+        let contactCount = 0;
 
-        for (const edge of repEdges) {
-            const node = edge?.node;
-            const category = (node?.typeName || 'OTHER').toUpperCase();
-            const companyNode = node?.agency?.company;
+        for (const rep of reps) {
+            const category = (rep.type || 'REPRESENTATIVE').toUpperCase();
+            const prefix = getArrayPrefix(category);
             
-            // Map IMDb Category to hb_talent column names
-            let contactCol = 'agenct_contacts', companyCol = 'agenct_companies';
-            if (category.includes('MANAGER')) { contactCol = 'management_contacts'; companyCol = 'management_companies'; }
-            else if (category.includes('COMMERCIAL')) { contactCol = 'agenctcommercial_contacts'; companyCol = 'agenctcommercial_companies'; }
-            else if (category.includes('PUBLICIST')) { contactCol = 'publicist_contacts'; companyCol = 'publicist_companies'; }
-            else if (category.includes('LEGAL')) { contactCol = 'legal_contacts'; companyCol = 'legal_companies'; }
-            else if (category.includes('APPEARANCE')) { contactCol = 'appearance_contacts'; companyCol = 'appearance_companies'; }
-
-            if (companyNode) {
-                const companyIdImdb = companyNode.id;
-                const mappedCompany = mapCompanyProfile(companyNode, companyIdImdb);
+            // 1. Process Company
+            const companyId = await findOrCreateCompany(rep.company, category);
+            if (companyId) {
+                console.log(`   🏢 ${category} -> ${rep.company.name}`);
+                updateData[`${prefix}_companies`].push(companyId);
+                companyCount++;
                 
-                if (mappedCompany) {
-                    const { data: companyRecord, error: companyErr } = await supabase
-                        .from('hb_companies')
-                        .upsert(mappedCompany, { onConflict: 'id_imdb' })
-                        .select()
-                        .single();
-                    
-                    if (companyErr) console.error(`   ❌ Company Error (${mappedCompany.company_name}):`, companyErr.message);
-                    else if (companyRecord) {
-                        console.log(`   🏢 Company OK: ${mappedCompany.company_name}`);
-                        if (!updates[companyCol].includes(companyRecord.id)) updates[companyCol].push(companyRecord.id);
-
-                        const agents = node?.agents || [];
-                        for (const agent of agents) {
-                            const mappedContact = mapContactProfile(agent, agent.id, mappedCompany.company_name);
-                            if (mappedContact) {
-                                mappedContact.linked_company = companyRecord.id;
-                                const { data: contactRecord, error: contactErr } = await supabase
-                                    .from('hb_contacts')
-                                    .upsert(mappedContact, { onConflict: 'id_imdb' })
-                                    .select()
-                                    .single();
-
-                                if (contactErr) console.error(`      ❌ Contact Error (${mappedContact.name_full}):`, contactErr.message);
-                                else if (contactRecord) {
-                                    console.log(`      👤 Agent OK: ${mappedContact.name_full} (${mappedContact.role || 'n/a'})`);
-                                    if (!updates[contactCol].includes(contactRecord.id)) updates[contactCol].push(contactRecord.id);
-                                    updates.contacts_all.push({
-                                        id: contactRecord.id,
-                                        name: contactRecord.name_full,
-                                        role: contactRecord.role,
-                                        company: mappedCompany.company_name,
-                                        category: category
-                                    });
-                                }
-                            }
+                // 2. Process Individual Agents under this company
+                if (rep.agents && rep.agents.length > 0) {
+                    for (const agent of rep.agents) {
+                        const contactId = await findOrCreateContact(agent, companyId, rep.company.name, category);
+                        if (contactId) {
+                            console.log(`      👤 Agent -> ${agent.name}`);
+                            updateData[`${prefix}_contacts`].push(contactId);
+                            contactCount++;
                         }
                     }
                 }
             }
         }
+        
+        // Finalize unique constraints & prep update object
+        let finalUpsert = { contacts_updated: new Date().toISOString() };
+        for (const key of Object.keys(updateData)) {
+            finalUpsert[key] = [...new Set(updateData[key])];
+        }
 
-        // Finalize Talent Links
-        const { error: updateErr } = await supabase
-            .from('hb_talent')
-            .update(updates)
-            .eq('id', talent.id);
-
-        if (updateErr) console.error(`   ❌ Failed to update hb_talent for ${talent.name}:`, updateErr.message);
-        else console.log(`   ✅ Talent CRM Linked: ${talent.name} (${updates.contacts_all.length} total contacts)`);
-
+        await supabase.from('hb_talent').update(finalUpsert).eq('id', talent.id);
+        
+        console.log(`   ✅ Synced. Companies: ${companyCount} | Individual Contacts: ${contactCount}`);
         return true;
-    } catch (error) {
-        console.error(`   ❌ Error processing ${talent.name}:`, error.message);
-        return false;
+    } catch (e) { 
+        console.error("   ❌ " + e.message); 
+        return false; 
     }
 }
 
 async function main() {
-    console.log('🚀 Starting IMDbPro CRM Induction Pipeline (Multi-Table Discovery Mode)...');
-    await updateWorkflowHeartbeat('Running', 'Scanning hb_talent and linking to hb_socials vertically...');
-
     try {
-        // Find talent records that need enrichment
-        const { data: talents, error: fetchErr } = await supabase
-            .from('hb_talent')
-            .select('id, name')
-            .is('contacts_updated', null)
-            .limit(LIMIT);
-
-        if (fetchErr) throw fetchErr;
-
-        if (!talents || talents.length === 0) {
-            console.log('✅ No new talent profiles need CRM induction.');
-            await updateWorkflowHeartbeat('Ready', 'Idle: All talent records are CRM-enriched.');
-            return;
+        const { data: talents } = await supabase.from('hb_talent').select('id, name').not('soc_imdb', 'is', null).is('contacts_updated', null).limit(LIMIT);
+        if (!talents?.length) return console.log('✅ Done.');
+        console.log(`📋 ${talents.length} targets queued`);
+        for (const talent of talents) { 
+            await processTalentContacts(talent); 
+            await sleep(getRandomDelay(2000, 4000)); 
         }
-
-        console.log(`📋 Found ${talents.length} talent records to investigate.`);
-        await updateWorkflowHeartbeat('Running', `Processing ${talents.length} profiles for CRM induction...`);
-
-        let successCount = 0;
-
-        for (let i = 0; i < talents.length; i++) {
-            const talent = talents[i];
-            console.log(`\n[${i + 1}/${talents.length}]`);
-            
-            const success = await processTalentContacts(talent);
-            if (success) successCount++;
-
-            await updateWorkflowHeartbeat('Running', `Processed ${i + 1}/${talents.length} profiles. Successful inductions: ${successCount}`);
-
-            // Rate limit delay between 8 and 15 seconds
-            if (i < talents.length - 1) {
-                const delay = getRandomDelay(8000, 15000);
-                console.log(`   ⏳ Sleeping ${Math.round(delay/1000)}s...`);
-                await sleep(delay);
-            }
-        }
-
-        await updateWorkflowHeartbeat('Ready', `Success: CRM Induction complete for ${successCount} talents.`);
-
-    } catch (error) {
-        console.error('💥 Pipeline error:', error.message);
-        await updateWorkflowHeartbeat('Errors', `Pipeline Error: ${error.message}`);
-    }
-
-    console.log('\n🏁 CRM Induction finished.');
+    } finally { await closeBrowser(); }
 }
-
-main().catch(console.error);
+main();
