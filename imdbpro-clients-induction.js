@@ -6,6 +6,10 @@ const LIMIT = 20; // Companies per batch
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_SLEEP_MS = 300; // TMDB rate limit: ~40 req/10s
 
+// In-memory cache: nmId -> talentId. Prevents duplicate creation when the same
+// person appears as a client at multiple companies within the same batch run.
+const talentCache = new Map();
+
 /**
  * Look up a person on TMDB using their IMDB nmId.
  * Returns full person data including biography, birthday, gender, place_of_birth, etc.
@@ -63,6 +67,11 @@ function mapGender(g) {
 async function findOrCreateTalent(client) {
     if (!client.soc_imdb_id) return null;
 
+    // 0. Check in-memory cache first (handles same-batch duplicates)
+    if (talentCache.has(client.soc_imdb_id)) {
+        return { talentId: talentCache.get(client.soc_imdb_id), isNew: false };
+    }
+
     // 1. Check if we already have an IMDB social profile for this nmId
     const { data: existingSocial } = await supabase
         .from('hb_socials')
@@ -73,6 +82,7 @@ async function findOrCreateTalent(client) {
         .maybeSingle();
 
     if (existingSocial && existingSocial.linked_talent) {
+        talentCache.set(client.soc_imdb_id, existingSocial.linked_talent);
         return { talentId: existingSocial.linked_talent, isNew: false };
     }
 
@@ -153,6 +163,7 @@ async function findOrCreateTalent(client) {
     let enrichLabel = tmdbData ? '🎬' : '📋';
     console.log(`      ${enrichLabel} Created: ${client.name}${tmdbData ? ` (TMDB: ${tmdbData.tmdb_id})` : ''}`);
 
+    talentCache.set(client.soc_imdb_id, talent.id);
     return { talentId: talent.id, isNew: true };
 }
 
