@@ -262,4 +262,8 @@ async function main() {
     console.log(`\n✅ Media enrichment complete.`);
 }
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = { processMedia };
