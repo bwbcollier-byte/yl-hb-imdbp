@@ -1,0 +1,24 @@
+name: IMDb Discover Movies (Box Office)
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: Run Pipeline
+        env:
+          IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          chmod +x runner-movies-boxoffice.sh
+          ./runner-movies-boxoffice.sh
