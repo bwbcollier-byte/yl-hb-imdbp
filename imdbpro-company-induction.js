@@ -17,7 +17,8 @@ async function processCompany(company) {
         }
 
         let updatePayload = {
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            check_imdbp: new Date().toISOString()
         };
 
         if (enrichedData.url) {
@@ -36,6 +37,21 @@ async function processCompany(company) {
             // We only set logo if the DB doesn't already have one
             updatePayload.logo = enrichedData.logoUrl;
             console.log(`   🖼️  Logo found`);
+        }
+        if (enrichedData.description) {
+            updatePayload.description = enrichedData.description;
+            console.log(`   📝 Description (About) retrieved`);
+        }
+        if (enrichedData.phone) {
+            updatePayload.phone = enrichedData.phone;
+            console.log(`   📞 Phone: ${enrichedData.phone}`);
+        }
+        if (enrichedData.locations_other) {
+            updatePayload.locations_other = enrichedData.locations_other;
+        }
+        if (enrichedData.country) {
+            updatePayload.country = enrichedData.country;
+            console.log(`   🌎 Country: ${enrichedData.country}`);
         }
 
         // Always update so we don't infinitely retry the same records
