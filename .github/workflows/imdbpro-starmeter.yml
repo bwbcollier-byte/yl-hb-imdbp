@@ -1,0 +1,34 @@
+name: IMDbPro Starmeter Discovery
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # Daily at 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  starmeter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium
+        run: npx puppeteer browsers install chrome
+
+      - name: Run Starmeter Discovery
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          chmod +x overnight-imdb-starmeter.sh
+          ./overnight-imdb-starmeter.sh
