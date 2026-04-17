@@ -88,14 +88,17 @@ async function main() {
                 if (result.isNew) createdTotal++;
                 else existingTotal++;
 
-                // Immediately run the TMDB Enrichment!
-                const enriched = await processMedia(result.media);
-                if (enriched === true) enrichedTotal++;
-                else if (enriched === 'skipped') skippedTotal++;
-                else failedTotal++;
+                // TMDb enrichment — games not supported by TMDb, skip entirely
+                if (urlType !== 'game') {
+                    const enriched = await processMedia(result.media);
+                    if (enriched === true) enrichedTotal++;
+                    else failedTotal++;
+                } else {
+                    skippedTotal++;
+                }
             }
 
-            console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal} | Enriched: ${enrichedTotal} | Skipped: ${skippedTotal} | Failed: ${failedTotal}`);
+            console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal}${urlType === 'game' ? ` | Inserted: ${createdTotal + existingTotal}` : ` | Enriched: ${enrichedTotal} | Failed: ${failedTotal}`}`);
 
             if (titles.length < 50) {
                 console.log(`   🔸 Less than 50 titles on page, assuming it's the last page.`);
@@ -109,9 +112,12 @@ async function main() {
         console.log(`✅ Run Complete.`);
         console.log(`   🆕 Created:          ${createdTotal}`);
         console.log(`   📂 Already Exist:    ${existingTotal}`);
-        console.log(`   ✨ TMDB Enriched:    ${enrichedTotal}`);
-        console.log(`   ⏭️  Skipped (Games):  ${skippedTotal}`);
-        console.log(`   ❌ Failed:           ${failedTotal}`);
+        if (urlType === 'game') {
+            console.log(`   🎮 Games Inserted:   ${createdTotal + existingTotal}`);
+        } else {
+            console.log(`   ✨ TMDB Enriched:    ${enrichedTotal}`);
+            console.log(`   ❌ Failed:           ${failedTotal}`);
+        }
         console.log(`   📊 Total Scanned:    ${scannedTotal}`);
     } finally {
         await closeBrowser();
