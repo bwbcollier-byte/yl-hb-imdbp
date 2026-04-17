@@ -100,8 +100,8 @@ async function main() {
 
             console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal}${urlType === 'game' ? ` | Inserted: ${createdTotal + existingTotal}` : ` | Enriched: ${enrichedTotal} | Failed: ${failedTotal}`}`);
 
-            if (titles.length < 50) {
-                console.log(`   🔸 Less than 50 titles on page, assuming it's the last page.`);
+            if (titles.length < 10) {
+                console.log(`   🔸 Less than 10 titles on page, assuming it's the last page.`);
                 break;
             }
 
