@@ -58,6 +58,7 @@ async function main() {
     let createdTotal = 0;
     let existingTotal = 0;
     let enrichedTotal = 0;
+    let skippedTotal = 0;
     let failedTotal = 0;
     let scannedTotal = 0;
 
@@ -89,11 +90,12 @@ async function main() {
 
                 // Immediately run the TMDB Enrichment!
                 const enriched = await processMedia(result.media);
-                if (enriched) enrichedTotal++;
+                if (enriched === true) enrichedTotal++;
+                else if (enriched === 'skipped') skippedTotal++;
                 else failedTotal++;
             }
 
-            console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal} | Successfully Enriched: ${enrichedTotal} | Failed: ${failedTotal}`);
+            console.log(`   📊 P${pageNum} summary | New: ${createdTotal} | Existing: ${existingTotal} | Enriched: ${enrichedTotal} | Skipped: ${skippedTotal} | Failed: ${failedTotal}`);
 
             if (titles.length < 50) {
                 console.log(`   🔸 Less than 50 titles on page, assuming it's the last page.`);
@@ -108,6 +110,7 @@ async function main() {
         console.log(`   🆕 Created:          ${createdTotal}`);
         console.log(`   📂 Already Exist:    ${existingTotal}`);
         console.log(`   ✨ TMDB Enriched:    ${enrichedTotal}`);
+        console.log(`   ⏭️  Skipped (Games):  ${skippedTotal}`);
         console.log(`   ❌ Failed:           ${failedTotal}`);
         console.log(`   📊 Total Scanned:    ${scannedTotal}`);
     } finally {
