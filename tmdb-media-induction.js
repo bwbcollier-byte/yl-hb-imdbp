@@ -148,7 +148,7 @@ async function processMedia(media) {
     if (mediaType === 'game') {
         console.log(`   🎮 Media is a Video Game. Skipping TMDB enrichment as TMDB only tracks Movies and TV.`);
         await supabase.from('hb_media').update({ check_tmdb_enrichment: new Date().toISOString() }).eq('id', media.id);
-        return true;
+        return 'skipped'; // game — not enriched, not failed
     }
 
     // 1. Resolve TMDB ID if missing
