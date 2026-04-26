@@ -26,7 +26,7 @@ jobs:
             -H "apikey: $SUPABASE_SERVICE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"p_workflow_id": ${{ vars.WORKFLOW_ID_IMDB_TOP_NEWS }}, "p_status": "running", "p_run_id": "${{ github.run_id }}"}'
+            -d '{"p_workflow_id": 261762663, "p_status": "running", "p_run_id": "${{ github.run_id }}"}'
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
         run: |
           DURATION=$(( $(date +%s) - $START_TIME ))
           STATUS="${{ job.status }}"
-          PAYLOAD=$(printf '{"p_workflow_id": ${{ vars.WORKFLOW_ID_IMDB_TOP_NEWS }}, "p_status": "%s", "p_duration_secs": %s, "p_run_id": "${{ github.run_id }}"}' "$STATUS" "$DURATION")
+          PAYLOAD=$(printf '{"p_workflow_id": 261762663, "p_status": "%s", "p_duration_secs": %s, "p_run_id": "${{ github.run_id }}"}' "$STATUS" "$DURATION")
           curl -s -X POST "$SUPABASE_URL/rest/v1/rpc/log_workflow_run" \
             -H "apikey: $SUPABASE_SERVICE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
