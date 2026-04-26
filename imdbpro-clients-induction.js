@@ -127,9 +127,15 @@ async function findOrCreateTalent(client) {
         linked_talent: talent.id
     };
 
+    // Use upsert on (type, identifier) — that's the unique constraint on hb_socials.
+    // Without this, re-processing the same client errors on the unique violation
+    // and silently skips the soc_imdb link below, leaving the new talent row orphaned.
+    // Note: linked_talent will be overwritten to the most recently inserted talent.id
+    // when the social already exists. Duplicate talent creation is tracked separately
+    // (no unique key on hb_talent matches what's available in talentPayload).
     const { data: imdbSocial, error: imdbErr } = await supabase
         .from('hb_socials')
-        .insert(imdbSocialPayload)
+        .upsert(imdbSocialPayload, { onConflict: 'type,identifier' })
         .select('id')
         .single();
 
