@@ -41,6 +41,7 @@ jobs:
           IMDBPRO_COOKIE: ${{ secrets.IMDBPRO_COOKIE }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           CLIENTS_MAX_PAGES: '10'
+          TIME_BUDGET_MINUTES: '50'
         run: |
           chmod +x overnight-imdb-clients.sh
           ./overnight-imdb-clients.sh

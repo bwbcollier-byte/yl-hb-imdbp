@@ -269,6 +269,10 @@ async function processCompany(company) {
 }
 
 async function main() {
+    const TIME_BUDGET_MINUTES = parseInt(process.env.TIME_BUDGET_MINUTES || '50', 10);
+    const startTime = Date.now();
+    const budgetMs = TIME_BUDGET_MINUTES * 60 * 1000;
+
     if (!TMDB_API_KEY) console.log('⚠️  No TMDB_API_KEY set — new talent will be created without TMDB enrichment.\n');
 
     try {
@@ -283,6 +287,10 @@ async function main() {
         console.log(`📋 ${companies.length} companies queued for client roster extraction\n`);
 
         for (const company of companies) {
+            if (Date.now() - startTime >= budgetMs) {
+                console.log(`⏱️  Time budget reached (${TIME_BUDGET_MINUTES} min). Exiting cleanly.`);
+                process.exit(0);
+            }
             await processCompany(company);
             await sleep(getRandomDelay(3000, 6000));
         }

@@ -140,13 +140,21 @@ async function processTalentContacts(talent) {
 }
 
 async function main() {
+    const TIME_BUDGET_MINUTES = parseInt(process.env.TIME_BUDGET_MINUTES || '50', 10);
+    const startTime = Date.now();
+    const budgetMs = TIME_BUDGET_MINUTES * 60 * 1000;
+
     try {
         const { data: talents } = await supabase.from('hb_talent').select('id, name').not('soc_imdb', 'is', null).is('contacts_updated', null).limit(LIMIT);
         if (!talents?.length) return console.log('✅ Done.');
         console.log(`📋 ${talents.length} targets queued`);
-        for (const talent of talents) { 
-            await processTalentContacts(talent); 
-            await sleep(getRandomDelay(2000, 4000)); 
+        for (const talent of talents) {
+            if (Date.now() - startTime >= budgetMs) {
+                console.log(`⏱️  Time budget reached (${TIME_BUDGET_MINUTES} min). Exiting cleanly.`);
+                process.exit(0);
+            }
+            await processTalentContacts(talent);
+            await sleep(getRandomDelay(2000, 4000));
         }
     } finally { await closeBrowser(); }
 }

@@ -51,6 +51,10 @@ async function findOrCreateMedia(titleData) {
 }
 
 async function main() {
+    const TIME_BUDGET_MINUTES = parseInt(process.env.TIME_BUDGET_MINUTES || '50', 10);
+    const startTime = Date.now();
+    const budgetMs = TIME_BUDGET_MINUTES * 60 * 1000;
+
     console.log(`⭐ IMDbPro Discover Titles (starting page ${START_PAGE}, max pages ${MAX_PAGES})`);
     console.log(`🔗 Target: ${TARGET_URL}`);
     console.log('='.repeat(50));
@@ -64,6 +68,10 @@ async function main() {
 
     try {
         for (let pageNum = START_PAGE; pageNum < START_PAGE + MAX_PAGES; pageNum++) {
+            if (Date.now() - startTime >= budgetMs) {
+                console.log(`⏱️  Time budget reached (${TIME_BUDGET_MINUTES} min). Exiting cleanly.`);
+                process.exit(0);
+            }
             console.log(`\n📄 Fetching Page ${pageNum}...`);
             const titles = await fetchDiscoverTitlesPage(TARGET_URL, pageNum);
 
