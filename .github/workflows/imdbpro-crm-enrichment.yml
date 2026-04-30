@@ -52,6 +52,7 @@ jobs:
           AIRTABLE_PAT: ${{ secrets.AIRTABLE_PAT }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           AIRTABLE_RECORD_ID: reci8liOZAVmuhcmz
+          TIME_BUDGET_MINUTES: '50'
         run: |
           chmod +x overnight-imdb-contacts.sh
           ./overnight-imdb-contacts.sh

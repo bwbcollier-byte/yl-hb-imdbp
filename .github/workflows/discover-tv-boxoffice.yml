@@ -30,6 +30,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TIME_BUDGET_MINUTES: '50'
         run: |
           chmod +x runner-tv-boxoffice.sh
           ./runner-tv-boxoffice.sh
