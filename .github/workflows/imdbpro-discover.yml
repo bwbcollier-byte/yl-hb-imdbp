@@ -9,9 +9,16 @@ on:
         required: true
         default: "https://pro.imdb.com/discover/people/?profession=any&sortOrder=STARMETER_ASC&ref_=nmnw_nv_ppl_stm"
 
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   discover_and_scrape:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360 # 6 hours max (for list processing with delays)
 
     steps:
@@ -32,10 +39,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          cache: 'npm'
           node-version: "20"
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Install Chrome for Puppeteer
         run: npx puppeteer browsers install chrome
