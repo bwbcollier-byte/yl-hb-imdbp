@@ -11,9 +11,16 @@ on:
     # Run once daily at midnight UTC
     - cron: "0 0 * * *"
 
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   enrich:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360 # Long timeout to accommodate rate-limited scraping
 
     steps:
@@ -34,10 +41,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          cache: 'npm'
           node-version: "20"
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Install Chrome
         run: npx puppeteer browsers install chrome

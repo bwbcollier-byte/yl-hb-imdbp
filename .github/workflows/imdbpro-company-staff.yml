@@ -5,9 +5,16 @@ on:
     - cron: '0 3 * * *' # Daily at 03:00 UTC
   workflow_dispatch:
 
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   staff-extraction:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
 
     steps:
@@ -26,10 +33,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          cache: 'npm'
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Install Chromium
         run: npx puppeteer browsers install chrome
