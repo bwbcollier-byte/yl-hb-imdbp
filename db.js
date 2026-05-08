@@ -23,102 +23,120 @@ function clean(obj) {
 
 /**
  * Upsert a Talent Profile. Returns the database UUID of the record.
+ * Looks up the talent via hb_socials (IMDB type) — skips insert if no social link exists.
  */
 async function upsertTalent(data) {
-    const payload = clean(data);
-    
-    // 1. Check for existing record by imdb_id
-    const { data: existing, error: findError } = await supabase
-        .from('talent_profiles')
-        .select('id')
-        .eq('imdb_id', payload.imdb_id)
+    const raw = clean(data);
+
+    // 1. Find talent UUID via hb_socials where type = 'IMDB'
+    const { data: social, error: socialError } = await supabase
+        .from('hb_socials')
+        .select('linked_talent')
+        .eq('type', 'IMDB')
+        .eq('identifier', raw.imdb_id)
         .maybeSingle();
 
-    if (findError) {
-        console.error('   ❌ Error searching for talent:', findError.message);
+    if (socialError) {
+        console.error('   ❌ Error looking up IMDB social:', socialError.message);
         return null;
     }
 
-    if (existing) {
-        // 2. Update existing record
-        const { data: updated, error: updateError } = await supabase
-            .from('talent_profiles')
-            .update(payload)
-            .eq('id', existing.id)
-            .select('id')
-            .single();
-
-        if (updateError) {
-            console.error('   ❌ Error updating talent:', updateError.message);
-            return null;
-        }
-        return updated.id;
-    } else {
-        // 3. Insert new record
-        const { data: inserted, error: insertError } = await supabase
-            .from('talent_profiles')
-            .insert(payload)
-            .select('id')
-            .single();
-
-        if (insertError) {
-            console.error('   ❌ Error inserting talent:', insertError.message);
-            return null;
-        }
-        return inserted.id;
+    if (!social) {
+        console.log('   ⏭ No hb_socials IMDB entry found — skipping talent upsert');
+        return null;
     }
+
+    const talentId = social.linked_talent;
+
+    // 2. Build hb_talent payload — remap columns, drop imdb_id
+    const { imdb_id, description, profile_image, ...rest } = raw;
+    const payload = clean({
+        ...rest,
+        biography: description,
+        image: profile_image,
+    });
+
+    // 3. Update hb_talent by id
+    const { data: updated, error: updateError } = await supabase
+        .from('hb_talent')
+        .update(payload)
+        .eq('id', talentId)
+        .select('id')
+        .single();
+
+    if (updateError) {
+        console.error('   ❌ Error updating talent:', updateError.message);
+        return null;
+    }
+    return updated.id;
 }
 
 /**
- * Upsert social profiles. Checks for existence by (talent_id, social_type)
+ * Upsert social profiles into hb_socials. Checks for existence by (linked_talent, type).
  */
 async function upsertSocials(socials) {
     for (const social of socials) {
-        const payload = clean(social);
-        
+        const raw = clean(social);
+
+        // Remap legacy field names → hb_socials column names
+        const { talent_id, social_type, social_id, social_about, social_image, social_url, ...rest } = raw;
+        const payload = clean({
+            ...rest,
+            linked_talent: talent_id,
+            type: social_type,
+            identifier: social_id,
+            description: social_about,
+            image: social_image,
+            social_url,
+        });
+
         // Find existing record
         const { data: existing, error: findError } = await supabase
-            .from('social_profiles')
+            .from('hb_socials')
             .select('id')
-            .eq('talent_id', payload.talent_id)
-            .eq('social_type', payload.social_type)
+            .eq('linked_talent', payload.linked_talent)
+            .eq('type', payload.type)
             .maybeSingle();
 
         if (findError) {
-            console.error(`   ❌ Error finding social ${payload.social_type}:`, findError.message);
+            console.error(`   ❌ Error finding social ${payload.type}:`, findError.message);
             continue;
         }
 
         if (existing) {
             // Update
             const { error: updateError } = await supabase
-                .from('social_profiles')
+                .from('hb_socials')
                 .update(payload)
                 .eq('id', existing.id);
-            if (!updateError) console.log(`      ✅ Updated Social: ${payload.social_type}`);
-            else console.error(`      ❌ Update fail: ${payload.social_type}`, updateError.message);
+            if (!updateError) console.log(`      ✅ Updated Social: ${payload.type}`);
+            else console.error(`      ❌ Update fail: ${payload.type}`, updateError.message);
         } else {
             // Insert
             const { error: insertError } = await supabase
-                .from('social_profiles')
+                .from('hb_socials')
                 .insert(payload);
-            if (!insertError) console.log(`      ✅ Added Social: ${payload.social_type}`);
-            else console.error(`      ❌ Insert fail: ${payload.social_type}`, insertError.message);
+            if (!insertError) console.log(`      ✅ Added Social: ${payload.type}`);
+            else console.error(`      ❌ Insert fail: ${payload.type}`, insertError.message);
         }
     }
 }
 
 /**
- * Upsert a Company Profile.
+ * Upsert a Company Profile into hb_companies.
  */
 async function upsertCompany(data) {
-    const payload = clean(data);
-    
+    const raw = clean(data);
+
+    // Remap id_imdb → soc_imdb_id
+    const { id_imdb, ...rest } = raw;
+    const payload = clean({ ...rest, soc_imdb_id: id_imdb });
+
     // Check for existing
     const { data: existing, error: findError } = await supabase
-        .from('crm_companies')
+        .from('hb_companies')
         .select('id')
-        .eq('id_imdb', payload.id_imdb)
+        .eq('soc_imdb_id', payload.soc_imdb_id)
         .maybeSingle();
 
     if (findError) {
@@ -128,29 +146,33 @@ async function upsertCompany(data) {
 
     if (existing) {
         const { error: updateError } = await supabase
-            .from('crm_companies')
+            .from('hb_companies')
             .update(payload)
             .eq('id', existing.id);
         if (updateError) console.error('   ❌ Error updating company:', updateError.message);
     } else {
         const { error: insertError } = await supabase
-            .from('crm_companies')
+            .from('hb_companies')
             .insert(payload);
         if (insertError) console.error('   ❌ Error inserting company:', insertError.message);
     }
 }
 
 /**
- * Upsert a Contact (Agent/Rep).
+ * Upsert a Contact (Agent/Rep) into hb_contacts.
  */
 async function upsertContact(data) {
-    const payload = clean(data);
-    
+    const raw = clean(data);
+
+    // Remap id_imdb → soc_imdb_id
+    const { id_imdb, ...rest } = raw;
+    const payload = clean({ ...rest, soc_imdb_id: id_imdb });
+
     // Check for existing
     const { data: existing, error: findError } = await supabase
-        .from('crm_contacts')
+        .from('hb_contacts')
         .select('id')
-        .eq('id_imdb', payload.id_imdb)
+        .eq('soc_imdb_id', payload.soc_imdb_id)
         .maybeSingle();
 
     if (findError) {
@@ -160,13 +182,13 @@ async function upsertContact(data) {
 
     if (existing) {
         const { error: updateError } = await supabase
-            .from('crm_contacts')
+            .from('hb_contacts')
             .update(payload)
             .eq('id', existing.id);
         if (updateError) console.error('   ❌ Error updating contact:', updateError.message);
     } else {
         const { error: insertError } = await supabase
-            .from('crm_contacts')
+            .from('hb_contacts')
             .insert(payload);
         if (insertError) console.error('   ❌ Error inserting contact:', insertError.message);
     }
